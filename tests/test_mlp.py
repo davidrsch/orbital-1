@@ -284,7 +284,9 @@ class TestGemmTranslator:
 
     def test_gemm_single_output_transB1(self):
         """Gemm 2→1 output, transB=1: 1.0*0.5 + 2.0*0.3 + 0.1 = 1.2."""
-        table = ibis.memtable({"feature1": [1.0], "feature2": [2.0]})
+        # Table must have a column named "A" to match the graph input.
+        # We then override variables["A"] with the desired group.
+        table = ibis.memtable({"A": [0.0], "feature1": [1.0], "feature2": [2.0]})
         # B stored as (output_dim=1, input_dim=2): [0.5, 0.3]
         # C: [0.1]
         # Expected: 1.0*0.5 + 2.0*0.3 + 0.1 = 1.2
@@ -311,7 +313,7 @@ class TestGemmTranslator:
 
     def test_gemm_multi_output_transB1(self):
         """Gemm 2→2 output with identity weight matrix (transB=1): output == input."""
-        table = ibis.memtable({"feature1": [3.0], "feature2": [4.0]})
+        table = ibis.memtable({"A": [0.0], "feature1": [3.0], "feature2": [4.0]})
         # B stored as (output_dim=2, input_dim=2): identity [[1,0],[0,1]] flattened = [1,0,0,1]
         # C: [0.0, 0.0]
         graph = self._make_gemm_graph(

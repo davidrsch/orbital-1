@@ -25,13 +25,27 @@ from .translation.steps.mul import MulTranslator
 from .translation.steps.onehotencoder import OneHotEncoderTranslator
 from .translation.steps.reshape import ReshapeTranslator
 from .translation.steps.scaler import ScalerTranslator
+from .translation.steps.abs import AbsTranslator
+from .translation.steps.batchnorm import BatchNormalizationTranslator
+from .translation.steps.celu import CeluTranslator
 from .translation.steps.clip import ClipTranslator
+from .translation.steps.elu import EluTranslator
+from .translation.steps.erf import ErfTranslator
 from .translation.steps.flatten import FlattenTranslator
 from .translation.steps.gemm import GemmTranslator
+from .translation.steps.hardsigmoid import HardSigmoidTranslator
+from .translation.steps.hardswish import HardSwishTranslator
+from .translation.steps.leakyrelu import LeakyReluTranslator
 from .translation.steps.logsoftmax import LogSoftmaxTranslator
+from .translation.steps.neg import NegTranslator
+from .translation.steps.pow import PowTranslator
+from .translation.steps.reducemean import ReduceMeanTranslator
 from .translation.steps.relu import ReluTranslator
+from .translation.steps.selu import SeluTranslator
 from .translation.steps.sigmoid import SigmoidTranslator
 from .translation.steps.softmax import SoftmaxTranslator
+from .translation.steps.sqrt import SqrtTranslator
+from .translation.steps.squeeze import SqueezeTranslator, UnsqueezeTranslator
 from .translation.steps.transpose import TransposeTranslator
 from .translation.steps.sub import SubTranslator
 from .translation.steps.tanh import TanhTranslator
@@ -49,22 +63,34 @@ from .translation.variables import GraphVariables
 # registration, but explicit mapping avoids effects at a distance and
 # makes it easier to understand the translation process.
 TRANSLATORS: dict[str, type[Translator]] = {
+    "Abs": AbsTranslator,
+    "BatchNormalization": BatchNormalizationTranslator,
     "Cast": CastTranslator,
     "CastLike": CastLikeTranslator,
+    "Celu": CeluTranslator,
+    "Clip": ClipTranslator,
     "Concat": ConcatTranslator,
+    "Elu": EluTranslator,
+    "Erf": ErfTranslator,
     "FeatureVectorizer": FeatureVectorizerTranslator,
+    "HardSigmoid": HardSigmoidTranslator,
+    "HardSwish": HardSwishTranslator,
+    "LeakyRelu": LeakyReluTranslator,
     "Sub": SubTranslator,
     "MatMul": MatMulTranslator,
     "Add": AddTranslator,
     "Div": DivTranslator,
     "Mul": MulTranslator,
-    "Clip": ClipTranslator,
+    "Neg": NegTranslator,
+    "Pow": PowTranslator,
+    "ReduceMean": ReduceMeanTranslator,
     "Flatten": FlattenTranslator,
     "LogSoftmax": LogSoftmaxTranslator,
     "Relu": ReluTranslator,
     "Reshape": ReshapeTranslator,
     "Transpose": TransposeTranslator,
     "Scaler": ScalerTranslator,
+    "Selu": SeluTranslator,
     "Sigmoid": SigmoidTranslator,
     "Gather": GatherTranslator,
     "Gemm": GemmTranslator,
@@ -77,7 +103,10 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "ZipMap": ZipMapTranslator,
     "ArgMax": ArgMaxTranslator,
     "Softmax": SoftmaxTranslator,
+    "Sqrt": SqrtTranslator,
+    "Squeeze": SqueezeTranslator,
     "Tanh": TanhTranslator,
+    "Unsqueeze": UnsqueezeTranslator,
     "TreeEnsembleClassifier": TreeEnsembleClassifierTranslator,
     "TreeEnsembleRegressor": TreeEnsembleRegressorTranslator,
     "LinearRegressor": LinearRegressorTranslator,
