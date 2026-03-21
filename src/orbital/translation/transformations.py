@@ -180,11 +180,33 @@ class IdentityTransform(PostTransform):
         return value
 
 
+class ReluTransform(PostTransform):
+    """ReLU transformation: max(0, x)."""
+
+    def transform_numeric(
+        self, value: ibis.expr.types.NumericValue
+    ) -> ibis.expr.types.NumericValue:
+        """Apply ReLU transformation to a single value."""
+        return ibis.greatest(ibis.literal(0.0), value)
+
+
+class TanhTransform(PostTransform):
+    """Tanh transformation: (exp(x) - exp(-x)) / (exp(x) + exp(-x))."""
+
+    def transform_numeric(
+        self, value: ibis.expr.types.NumericValue
+    ) -> ibis.expr.types.NumericValue:
+        """Apply tanh transformation to a single value."""
+        return value.tanh()
+
+
 # Mapping of transformation names to their corresponding classes
 TRANSFORM_CLASSES: dict[str, type[PostTransform]] = {
     "LOGISTIC": LogisticTransform,
     "NONE": IdentityTransform,
+    "RELU": ReluTransform,
     "SOFTMAX": SoftmaxTransform,
+    "TANH": TanhTransform,
     # Make sure you prefix ORBITAL specific transforms with ORBITAL_
     # to avoid conflicts with ONNX transforms.
     "ORBITAL_NORMALIZE": NormalizeTransform,

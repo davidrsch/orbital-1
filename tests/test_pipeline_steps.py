@@ -4314,3 +4314,48 @@ class TestArrayFeatureExtractorTranslator:
         # Should map indices to class names
         computed = list(backend.execute(result))
         assert computed == ["class_a", "class_b", "class_c", "class_b", "class_a"]
+
+
+# MLP activation/matrix translators — full tests in test_mlp.py
+class TestReluTranslator:
+    """Tests for ReluTranslator — see test_mlp.py for comprehensive tests."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_relu_registered(self):
+        """Verify ReluTranslator is registered in TRANSLATORS."""
+        from orbital.translation.steps.relu import ReluTranslator
+        assert TRANSLATORS.get("Relu") is ReluTranslator
+
+
+class TestTanhTranslator:
+    """Tests for TanhTranslator — see test_mlp.py for comprehensive tests."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_tanh_registered(self):
+        """Verify TanhTranslator is registered in TRANSLATORS."""
+        from orbital.translation.steps.tanh import TanhTranslator
+        assert TRANSLATORS.get("Tanh") is TanhTranslator
+
+
+class TestSigmoidTranslator:
+    """Tests for SigmoidTranslator — see test_mlp.py for comprehensive tests."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_sigmoid_registered(self):
+        """Verify SigmoidTranslator is registered in TRANSLATORS."""
+        from orbital.translation.steps.sigmoid import SigmoidTranslator
+        assert TRANSLATORS.get("Sigmoid") is SigmoidTranslator
+
+
+class TestGemmTranslator:
+    """Tests for GemmTranslator — see test_mlp.py for comprehensive tests."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_gemm_registered(self):
+        """Verify GemmTranslator is registered in TRANSLATORS."""
+        from orbital.translation.steps.gemm import GemmTranslator
+        assert TRANSLATORS.get("Gemm") is GemmTranslator

@@ -25,8 +25,12 @@ from .translation.steps.mul import MulTranslator
 from .translation.steps.onehotencoder import OneHotEncoderTranslator
 from .translation.steps.reshape import ReshapeTranslator
 from .translation.steps.scaler import ScalerTranslator
+from .translation.steps.gemm import GemmTranslator
+from .translation.steps.relu import ReluTranslator
+from .translation.steps.sigmoid import SigmoidTranslator
 from .translation.steps.softmax import SoftmaxTranslator
 from .translation.steps.sub import SubTranslator
+from .translation.steps.tanh import TanhTranslator
 from .translation.steps.trees import (
     TreeEnsembleClassifierTranslator,
     TreeEnsembleRegressorTranslator,
@@ -50,9 +54,12 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Add": AddTranslator,
     "Div": DivTranslator,
     "Mul": MulTranslator,
+    "Relu": ReluTranslator,
     "Reshape": ReshapeTranslator,
     "Scaler": ScalerTranslator,
+    "Sigmoid": SigmoidTranslator,
     "Gather": GatherTranslator,
+    "Gemm": GemmTranslator,
     "ArrayFeatureExtractor": ArrayFeatureExtractorTranslator,
     "Identity": IdentityTranslator,
     "Imputer": ImputerTranslator,
@@ -62,6 +69,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "ZipMap": ZipMapTranslator,
     "ArgMax": ArgMaxTranslator,
     "Softmax": SoftmaxTranslator,
+    "Tanh": TanhTranslator,
     "TreeEnsembleClassifier": TreeEnsembleClassifierTranslator,
     "TreeEnsembleRegressor": TreeEnsembleRegressorTranslator,
     "LinearRegressor": LinearRegressorTranslator,
