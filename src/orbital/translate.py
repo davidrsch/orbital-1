@@ -25,10 +25,14 @@ from .translation.steps.mul import MulTranslator
 from .translation.steps.onehotencoder import OneHotEncoderTranslator
 from .translation.steps.reshape import ReshapeTranslator
 from .translation.steps.scaler import ScalerTranslator
+from .translation.steps.clip import ClipTranslator
+from .translation.steps.flatten import FlattenTranslator
 from .translation.steps.gemm import GemmTranslator
+from .translation.steps.logsoftmax import LogSoftmaxTranslator
 from .translation.steps.relu import ReluTranslator
 from .translation.steps.sigmoid import SigmoidTranslator
 from .translation.steps.softmax import SoftmaxTranslator
+from .translation.steps.transpose import TransposeTranslator
 from .translation.steps.sub import SubTranslator
 from .translation.steps.tanh import TanhTranslator
 from .translation.steps.trees import (
@@ -54,8 +58,12 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Add": AddTranslator,
     "Div": DivTranslator,
     "Mul": MulTranslator,
+    "Clip": ClipTranslator,
+    "Flatten": FlattenTranslator,
+    "LogSoftmax": LogSoftmaxTranslator,
     "Relu": ReluTranslator,
     "Reshape": ReshapeTranslator,
+    "Transpose": TransposeTranslator,
     "Scaler": ScalerTranslator,
     "Sigmoid": SigmoidTranslator,
     "Gather": GatherTranslator,

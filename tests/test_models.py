@@ -250,7 +250,6 @@ class TestSingleStepPipelines:
         # Test parsing, SQL generation, and execution
         self.validate_sql_execution(pipeline, X, y, features, is_classification=True)
 
-    @pytest.mark.skip(reason="Sigmoid step not yet implemented")
     def test_logistic_regression_double_features(self):
         """Test LogisticRegression with all double features."""
         features = {

@@ -4359,3 +4359,168 @@ class TestGemmTranslator:
         """Verify GemmTranslator is registered in TRANSLATORS."""
         from orbital.translation.steps.gemm import GemmTranslator
         assert TRANSLATORS.get("Gemm") is GemmTranslator
+
+
+class TestClipTranslator:
+    """Tests for ClipTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_clip_registered(self):
+        """Verify ClipTranslator is registered in TRANSLATORS."""
+        from orbital.translation.steps.clip import ClipTranslator
+        assert TRANSLATORS.get("Clip") is ClipTranslator
+
+    def test_clip_attribute_bounds(self):
+        """Clip with min/max as node attributes."""
+        table = ibis.memtable({"x": [-2.0, 0.0, 3.0, 8.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = Clip <min: float = 0.0, max: float = 6.0> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.clip import ClipTranslator
+        t = ClipTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        assert result == [0.0, 0.0, 3.0, 6.0]
+
+    def test_clip_min_only(self):
+        """Clip with only a lower bound (relu-equivalent)."""
+        table = ibis.memtable({"x": [-1.0, 0.0, 2.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = Clip <min: float = 0.0> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.clip import ClipTranslator
+        t = ClipTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        assert result == [0.0, 0.0, 2.0]
+
+
+class TestLogSoftmaxTranslator:
+    """Tests for LogSoftmaxTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_logsoftmax_registered(self):
+        """Verify LogSoftmaxTranslator is registered in TRANSLATORS."""
+        from orbital.translation.steps.logsoftmax import LogSoftmaxTranslator
+        assert TRANSLATORS.get("LogSoftmax") is LogSoftmaxTranslator
+
+    def test_logsoftmax_group(self):
+        """LogSoftmax of a column group sums to log(1) per row (all exp sum = 1 → log=0)."""
+        import math
+        multi_table = ibis.memtable({"a": [1.0], "b": [2.0], "c": [3.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = LogSoftmax(input)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
+        variables["input"] = NumericVariablesGroup(
+            {"a": multi_table["a"], "b": multi_table["b"], "c": multi_table["c"]}
+        )
+        from orbital.translation.steps.logsoftmax import LogSoftmaxTranslator
+        t = LogSoftmaxTranslator(
+            multi_table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        t.process()
+        result = variables.peek_variable("output")
+        assert isinstance(result, ValueVariablesGroup)
+        backend = ibis.duckdb.connect()
+        vals = [backend.execute(result[k])[0] for k in ["a", "b", "c"]]
+        # All log-softmax values must be ≤ 0 and exp(vals) must sum to 1
+        assert all(v <= 0 for v in vals)
+        assert abs(sum(math.exp(v) for v in vals) - 1.0) < 1e-9
+
+    def test_logsoftmax_single(self):
+        """LogSoftmax of a single input is always 0."""
+        table = ibis.memtable({"x": [5.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = LogSoftmax(x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.logsoftmax import LogSoftmaxTranslator
+        t = LogSoftmaxTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        backend = ibis.duckdb.connect()
+        assert backend.execute(variables.peek_variable("output")) == 0.0
+
+
+class TestTransposeTranslator:
+    """Tests for TransposeTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_transpose_registered(self):
+        """Verify TransposeTranslator is registered in TRANSLATORS."""
+        from orbital.translation.steps.transpose import TransposeTranslator
+        assert TRANSLATORS.get("Transpose") is TransposeTranslator
+
+    def test_transpose_passthrough(self):
+        """Transpose is a pass-through for column groups."""
+        table = ibis.memtable({"a": [1.0, 2.0], "b": [3.0, 4.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = Transpose <perm: ints = [1, 0]> (input)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
+        variables["input"] = ValueVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.transpose import TransposeTranslator
+        t = TransposeTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        result = variables.peek_variable("output")
+        assert isinstance(result, ValueVariablesGroup)
+        assert set(result.keys()) == {"a", "b"}
+
+
+class TestFlattenTranslator:
+    """Tests for FlattenTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_flatten_registered(self):
+        """Verify FlattenTranslator is registered in TRANSLATORS."""
+        from orbital.translation.steps.flatten import FlattenTranslator
+        assert TRANSLATORS.get("Flatten") is FlattenTranslator
+
+    def test_flatten_axis1_passthrough(self):
+        """Flatten at axis=1 is a pass-through (the only supported case)."""
+        table = ibis.memtable({"a": [1.0], "b": [2.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = Flatten <axis: int = 1> (input)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
+        variables["input"] = ValueVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.flatten import FlattenTranslator
+        t = FlattenTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        result = variables.peek_variable("output")
+        assert isinstance(result, ValueVariablesGroup)
+        assert set(result.keys()) == {"a", "b"}
+
+    def test_flatten_non_axis1_raises(self):
+        """Flatten at axis != 1 raises NotImplementedError."""
+        table = ibis.memtable({"x": [1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = Flatten <axis: int = 0> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.flatten import FlattenTranslator
+        t = FlattenTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        with pytest.raises(NotImplementedError, match="axis=1"):
+            t.process()
