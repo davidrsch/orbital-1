@@ -12,6 +12,7 @@ any known limitations.
 
 | Op-type                 | Typical source                                               | Notes                                                                                                         |
 | ----------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `Abs`                   | Element-wise absolute value; used in norm/activation exprs   | `\|x\|`                                                                                                       |
 | `Add`                   | `StandardScaler` (bias), MLP bias term, residual connections | Supports both constant-offset and variable-to-variable addition                                               |
 | `AveragePool`           | PyTorch `nn.AvgPool1d`, `nn.AdaptiveAvgPool1d`               | kernel_shape=1 pass-through; global mean for kernel_shape=[n_cols]; other configs raise `NotImplementedError` |
 | `BatchNormalization`    | PyTorch `nn.BatchNorm1d`, sklearn-onnx pipelines             | Inference mode: `(x-mean)/sqrt(var+eps)*scale+bias`; constants frozen at export time                          |
@@ -23,6 +24,7 @@ any known limitations.
 | `Div`                   | `StandardScaler` (scale)                                     |                                                                                                               |
 | `Dropout`               | PyTorch Dropout layers                                       | Inference pass-through; training mask not used                                                                |
 | `Elu`                   | PyTorch `nn.ELU(alpha)`                                      | `x ≥ 0 ? x : α*(exp(x)−1)`; default α=1                                                                       |
+| `Erf`                   | GELU decomposition (opset ≤ 19, `approximate="none"`)        | A&S 7.1.28 polynomial approximation; max error ≈ 1.5×10⁻⁷                                                     |
 | `Flatten`               | PyTorch MLP preprocessing                                    | axis=1 pass-through                                                                                           |
 | `Gather`                | category indexing                                            |                                                                                                               |
 | `Gelu`                  | PyTorch `nn.GELU()` (opset 20+)                              | Supports `approximate="tanh"` and `approximate="none"` modes                                                  |
@@ -30,30 +32,39 @@ any known limitations.
 | `GlobalAveragePool`     | PyTorch `AdaptiveAvgPool`, pooling layers                    | Row-wise mean over all feature columns; 2D/3D not supported                                                   |
 | `GlobalMaxPool`         | PyTorch `AdaptiveMaxPool`, pooling layers                    | Row-wise max over all feature columns via `ibis.greatest`                                                     |
 | `GroupNormalization`    | PyTorch `nn.GroupNorm`                                       | Normalises within each group; num_groups=1 or num_groups=C                                                    |
+| `HardSigmoid`           | PyTorch `nn.Hardsigmoid()`                                   | `max(0, min(1, α·x + β))`; α=0.2, β=0.5 from node attributes                                                  |
+| `HardSwish`             | PyTorch `nn.Hardswish()`                                     | `x * max(0, min(1, (x+3)/6))`                                                                                 |
 | `HardTanh`              | PyTorch `nn.Hardtanh()` exports                              | Equivalent to `Clip(x, -1, 1)`                                                                                |
 | `Identity`              | no-op pass-through                                           |                                                                                                               |
 | `InstanceNormalization` | PyTorch `nn.InstanceNorm1d`                                  | Per-row normalise across all channels; `(x-mean)/sqrt(var+eps)`                                               |
 | `LayerNormalization`    | PyTorch `nn.LayerNorm`, keras3 `LayerNormalization`          | Per-row normalise using inline mean/var expressions (opset 17+)                                               |
+| `LeakyRelu`             | PyTorch `nn.LeakyReLU(slope)`                                | `x ≥ 0 ? x : α·x`; α from node attribute, default α=0.01                                                      |
 | `LogSigmoid`            | PyTorch `nn.LogSigmoid()` custom exports                     | `ln(sigmoid(x)) = -ln(1 + exp(-x))`                                                                           |
 | `LogSoftmax`            | PyTorch log-probability output heads                         | Numerically stable log-sum-exp                                                                                |
 | `MatMul`                | general matrix multiply                                      |                                                                                                               |
 | `MaxPool`               | PyTorch `nn.MaxPool1d`                                       | kernel_shape=1 pass-through; global max for other configs                                                     |
 | `Mish`                  | PyTorch `nn.Mish()`                                          | `x * tanh(softplus(x))`                                                                                       |
 | `Mul`                   | element-wise multiply                                        |                                                                                                               |
+| `Neg`                   | Unary negation; used in sigmoid `exp(-x)` decomposition      | Element-wise `-x`                                                                                             |
 | `PRelu`                 | PyTorch `nn.PReLU()`, keras3 PReLU layer                     | Per-channel slope from `inputs[1]` initializer                                                                |
+| `Pow`                   | GELU decomposition (`x³` term), polynomial activations       | Element-wise `a^b`                                                                                            |
 | `ReduceMax`             | PyTorch `torch.max(..., dim=-1)` exports                     | Feature-axis reduction only (axis=-1 or axis=1)                                                               |
 | `ReduceMean`            | PyTorch `torch.mean(..., dim=-1)` exports                    | Feature-axis reduction only (axis=-1 or axis=1)                                                               |
 | `ReduceMin`             | PyTorch `torch.min(..., dim=-1)` exports                     | Feature-axis reduction only (axis=-1 or axis=1)                                                               |
 | `ReduceSum`             | PyTorch `torch.sum(..., dim=-1)` exports                     | Feature-axis reduction only (axis=-1 or axis=1)                                                               |
 | `Relu`                  | MLP hidden layers (`relu` activation)                        |                                                                                                               |
 | `Reshape`               | see note                                                     | No-op when shape is compatible; raises for unsupported reshapes                                               |
+| `Selu`                  | PyTorch `nn.SELU()`                                          | `γ·(x > 0 ? x : α·(exp(x)−1))`; γ≈1.0507, α≈1.6733; attributes can override                                   |
 | `Sigmoid`               | `LogisticRegression`, binary MLP output                      |                                                                                                               |
 | `Softmax`               | multiclass MLP output                                        | axis=-1 / axis=1                                                                                              |
 | `Softplus`              | PyTorch `nn.Softplus()`                                      | `ln(1 + exp(x))`                                                                                              |
 | `Softsign`              | PyTorch / keras Softsign exports                             | `x / (1 + \|x\|)`                                                                                             |
+| `Sqrt`                  | Norm layer std dev: `sqrt(var + ε)`; utility op              | Element-wise square root                                                                                      |
+| `Squeeze`               | ONNX tensor rank reduction                                   | Pass-through in the tabular single-row context                                                                |
 | `Sub`                   | `StandardScaler` (mean)                                      |                                                                                                               |
 | `Tanh`                  | MLP hidden layers (`tanh` activation)                        | Computed as `(exp(2x)-1)/(exp(2x)+1)` for SQL portability                                                     |
 | `Transpose`             | PyTorch weight permutation                                   | 2-D pass-through                                                                                              |
+| `Unsqueeze`             | ONNX tensor rank expansion                                   | Pass-through in the tabular single-row context                                                                |
 | `Where`                 | conditional expressions                                      |                                                                                                               |
 
 ## ONNX ML operators (ai.onnx.ml)
