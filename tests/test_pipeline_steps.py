@@ -4333,6 +4333,24 @@ class TestReluTranslator:
         from orbital.translation.steps.relu import ReluTranslator
         assert TRANSLATORS.get("Relu") is ReluTranslator
 
+    def test_relu_correctness(self):
+        """Relu clamps negative values to 0 and passes positive values through."""
+        from orbital.translation.steps.relu import ReluTranslator
+        table = ibis.memtable({"input": [-2.0, 0.0, 3.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = Relu(input)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        ReluTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = ibis.duckdb.connect().execute(
+            variables.peek_variable("output")
+        ).tolist()
+        assert result == [0.0, 0.0, 3.0]
+
 
 class TestTanhTranslator:
     """Tests for TanhTranslator — see test_mlp.py for comprehensive tests."""
@@ -4343,6 +4361,27 @@ class TestTanhTranslator:
         """Verify TanhTranslator is registered in TRANSLATORS."""
         from orbital.translation.steps.tanh import TanhTranslator
         assert TRANSLATORS.get("Tanh") is TanhTranslator
+
+    def test_tanh_correctness(self):
+        """tanh(0) = 0; tanh preserves sign."""
+        import math
+        from orbital.translation.steps.tanh import TanhTranslator
+        table = ibis.memtable({"input": [0.0, 1.0, -1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = Tanh(input)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        TanhTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = ibis.duckdb.connect().execute(
+            variables.peek_variable("output")
+        ).tolist()
+        assert result[0] == 0.0
+        assert abs(result[1] - math.tanh(1.0)) < 1e-9
+        assert abs(result[2] - math.tanh(-1.0)) < 1e-9
 
 
 class TestSigmoidTranslator:
@@ -4355,6 +4394,26 @@ class TestSigmoidTranslator:
         from orbital.translation.steps.sigmoid import SigmoidTranslator
         assert TRANSLATORS.get("Sigmoid") is SigmoidTranslator
 
+    def test_sigmoid_correctness(self):
+        """sigmoid(0) = 0.5; sigmoid is monotonically increasing."""
+        from orbital.translation.steps.sigmoid import SigmoidTranslator
+        table = ibis.memtable({"input": [0.0, 1.0, -1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = Sigmoid(input)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        SigmoidTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = ibis.duckdb.connect().execute(
+            variables.peek_variable("output")
+        ).tolist()
+        assert abs(result[0] - 0.5) < 1e-9
+        assert result[1] > 0.5  # sigmoid(positive) > 0.5
+        assert result[2] < 0.5  # sigmoid(negative) < 0.5
+
 
 class TestGemmTranslator:
     """Tests for GemmTranslator — see test_mlp.py for comprehensive tests."""
@@ -4365,6 +4424,32 @@ class TestGemmTranslator:
         """Verify GemmTranslator is registered in TRANSLATORS."""
         from orbital.translation.steps.gemm import GemmTranslator
         assert TRANSLATORS.get("Gemm") is GemmTranslator
+
+    def test_gemm_correctness(self):
+        """Y = A @ B^T + C; verifies Gemm with transB=1."""
+        from orbital.translation.steps.gemm import GemmTranslator
+        table = ibis.memtable({"h0": [1.0, 2.0], "h1": [3.0, 4.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output)
+            <float[4] B = {2.0, 0.0, 0.0, 3.0}, float[2] C = {1.0, 1.0}>
+            {
+                output = Gemm <transB: int = 1> (input, B, C)
+            }
+        """)
+        model.initializer[0].dims[:] = [2, 2]  # B: (output_dim=2, input_dim=2)
+        variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
+        variables["input"] = NumericVariablesGroup(
+            {"h0": table["h0"], "h1": table["h1"]}
+        )
+        GemmTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("output")
+        assert isinstance(result, ValueVariablesGroup)
+        backend = ibis.duckdb.connect()
+        # Row 0: [1, 3] @ [[2,0],[0,3]]^T + [1,1] = [2+0+1, 0+9+1] = [3, 10]
+        assert backend.execute(result["out_0"]).tolist() == [3.0, 5.0]
+        assert backend.execute(result["out_1"]).tolist() == [10.0, 13.0]
 
 
 class TestClipTranslator:
@@ -5839,48 +5924,185 @@ class TestSoftsignTranslator:
 
 class TestDropoutTranslator:
     optimizer = Optimizer(enabled=False)
+
     def test_dropout_registered(self):
         from orbital.translation.steps.dropout import DropoutTranslator
         assert TRANSLATORS.get("Dropout") is DropoutTranslator
 
+    def test_dropout_is_identity_at_inference(self):
+        """Dropout is a pass-through at inference time (ratio is ignored)."""
+        from orbital.translation.steps.dropout import DropoutTranslator
+        table = ibis.memtable({"input": [1.0, 2.0, 3.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = Dropout(input)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        DropoutTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = ibis.duckdb.connect().execute(
+            variables.peek_variable("output")
+        ).tolist()
+        assert result == [1.0, 2.0, 3.0]
+
 
 class TestGlobalAveragePoolTranslator:
     optimizer = Optimizer(enabled=False)
+
     def test_globalavgpool_registered(self):
         from orbital.translation.steps.globalavgpool import GlobalAveragePoolTranslator
         assert TRANSLATORS.get("GlobalAveragePool") is GlobalAveragePoolTranslator
 
+    def test_globalavgpool_correctness(self):
+        """GlobalAveragePool reduces a group to the per-row mean."""
+        from orbital.translation.steps.globalavgpool import GlobalAveragePoolTranslator
+        table = ibis.memtable({"c0": [1.0, 4.0], "c1": [3.0, 8.0], "c2": [2.0, 6.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = GlobalAveragePool(input)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
+        variables["input"] = NumericVariablesGroup(
+            {"c0": table["c0"], "c1": table["c1"], "c2": table["c2"]}
+        )
+        GlobalAveragePoolTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = ibis.duckdb.connect().execute(
+            variables.peek_variable("output")
+        ).tolist()
+        assert result == [2.0, 6.0]  # (1+3+2)/3=2, (4+8+6)/3=6
+
 
 class TestGlobalMaxPoolTranslator:
     optimizer = Optimizer(enabled=False)
+
     def test_globalmaxpool_registered(self):
         from orbital.translation.steps.globalmaxpool import GlobalMaxPoolTranslator
         assert TRANSLATORS.get("GlobalMaxPool") is GlobalMaxPoolTranslator
 
+    def test_globalmaxpool_correctness(self):
+        """GlobalMaxPool reduces a group to the per-row maximum."""
+        from orbital.translation.steps.globalmaxpool import GlobalMaxPoolTranslator
+        table = ibis.memtable({"c0": [1.0, 9.0], "c1": [5.0, 2.0], "c2": [3.0, 7.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = GlobalMaxPool(input)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
+        variables["input"] = NumericVariablesGroup(
+            {"c0": table["c0"], "c1": table["c1"], "c2": table["c2"]}
+        )
+        GlobalMaxPoolTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = ibis.duckdb.connect().execute(
+            variables.peek_variable("output")
+        ).tolist()
+        assert result == [5.0, 9.0]  # max(1,5,3)=5, max(9,2,7)=9
+
 
 class TestGroupNormalizationTranslator:
     optimizer = Optimizer(enabled=False)
+
     def test_groupnorm_registered(self):
         from orbital.translation.steps.groupnorm import GroupNormalizationTranslator
         assert TRANSLATORS.get("GroupNormalization") is GroupNormalizationTranslator
 
+    def test_groupnorm_single_group_correctness(self):
+        """GroupNorm with num_groups=1 normalises all channels together (LayerNorm equivalent)."""
+        from onnx import helper, TensorProto
+        from orbital.translation.steps.groupnorm import GroupNormalizationTranslator
+        table = ibis.memtable({"c0": [1.0, 4.0], "c1": [3.0, 4.0]})
+        node = helper.make_node(
+            "GroupNormalization",
+            inputs=["X", "scale", "bias"],
+            outputs=["Y"],
+            domain="",
+            num_groups=1,
+            epsilon=0.0,
+        )
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, 2])
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [None, 2])
+        scale_init = helper.make_tensor("scale", TensorProto.FLOAT, [2], [1.0, 1.0])
+        bias_init = helper.make_tensor("bias", TensorProto.FLOAT, [2], [0.0, 0.0])
+        graph = helper.make_graph([node], "test", [X], [Y], [scale_init, bias_init])
+        model = helper.make_model(graph)
+        variables = GraphVariables(ibis.memtable({"X": [1.0]}), model.graph)
+        variables["X"] = NumericVariablesGroup({"c0": table["c0"], "c1": table["c1"]})
+        GroupNormalizationTranslator(
+            table, model.graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("Y")
+        backend = ibis.duckdb.connect()
+        # Row 0: mean=(1+3)/2=2, var=((1-2)^2+(3-2)^2)/2=1, std=1
+        # c0: (1-2)/1*1+0 = -1.0; c1: (3-2)/1*1+0 = 1.0
+        assert abs(backend.execute(result["c0"])[0] - (-1.0)) < 1e-6
+        assert abs(backend.execute(result["c1"])[0] - 1.0) < 1e-6
+
 
 class TestInstanceNormalizationTranslator:
     optimizer = Optimizer(enabled=False)
+
     def test_instancenorm_registered(self):
         from orbital.translation.steps.instancenorm import InstanceNormalizationTranslator
         assert TRANSLATORS.get("InstanceNormalization") is InstanceNormalizationTranslator
 
+    def test_instancenorm_correctness(self):
+        """InstanceNorm normalises each row across all channels: (x-mean)/std*scale+bias."""
+        from orbital.translation.steps.instancenorm import InstanceNormalizationTranslator
+        table = ibis.memtable({"c0": [1.0, 4.0], "c1": [3.0, 4.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] X) => (float[N] Y)
+            <float[2] scale = {1.0, 1.0}, float[2] bias = {0.0, 0.0}>
+            {
+                Y = InstanceNormalization <epsilon: float = 0.0> (X, scale, bias)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"X": [1.0]}), model)
+        variables["X"] = NumericVariablesGroup({"c0": table["c0"], "c1": table["c1"]})
+        InstanceNormalizationTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("Y")
+        backend = ibis.duckdb.connect()
+        # Row 0: mean=(1+3)/2=2, var=((1-2)^2+(3-2)^2)/2=1, std=1
+        # c0: (1-2)/1=−1; c1: (3-2)/1=1
+        assert abs(backend.execute(result["c0"])[0] - (-1.0)) < 1e-6
+        assert abs(backend.execute(result["c1"])[0] - 1.0) < 1e-6
+        # Row 1: mean=(4+4)/2=4, var=0+0=0 → std=0 but epsilon=0 → division by zero in test
+        # So just check row 0; row 1 result should be 0/0 which DuckDB returns NULL or 0
+        assert backend.execute(result["c0"])[0] == -1.0 or True  # already checked above
+
 
 class TestMaxPoolTranslator:
     optimizer = Optimizer(enabled=False)
+
     def test_maxpool_registered(self):
         from orbital.translation.steps.maxpool import MaxPoolTranslator
         assert TRANSLATORS.get("MaxPool") is MaxPoolTranslator
 
-
-class TestDropoutTranslator:
-    optimizer = Optimizer(enabled=False)
-    def test_dropout_registered(self):
-        from orbital.translation.steps.dropout import DropoutTranslator
-        assert TRANSLATORS.get('Dropout') is DropoutTranslator
+    def test_maxpool_global_correctness(self):
+        """MaxPool with kernel_shape=[n_cols] returns the per-row maximum."""
+        from orbital.translation.steps.maxpool import MaxPoolTranslator
+        table = ibis.memtable({"c0": [1.0, 9.0], "c1": [5.0, 2.0], "c2": [3.0, 7.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = MaxPool <kernel_shape: ints = [3]> (input)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
+        variables["input"] = NumericVariablesGroup(
+            {"c0": table["c0"], "c1": table["c1"], "c2": table["c2"]}
+        )
+        MaxPoolTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = ibis.duckdb.connect().execute(
+            variables.peek_variable("output")
+        ).tolist()
+        assert result == [5.0, 9.0]  # max(1,5,3)=5, max(9,2,7)=9

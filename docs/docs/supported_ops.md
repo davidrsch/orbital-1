@@ -17,10 +17,12 @@ any known limitations.
 | `BatchNormalization`    | PyTorch `nn.BatchNorm1d`, sklearn-onnx pipelines             | Inference mode: `(x-mean)/sqrt(var+eps)*scale+bias`; constants frozen at export time                          |
 | `ArgMax`                | multiclass classifiers                                       | Returns index of max value                                                                                    |
 | `Cast` / `CastLike`     | type normalisation steps                                     |                                                                                                               |
+| `Celu`                  | PyTorch `nn.CELU(alpha)`                                     | `max(0,x) + min(0, α*(exp(x/α)−1))`; default α=1                                                              |
 | `Clip`                  | `relu6`, quantisation-aware models                           | Supports opset < 11 (attributes) and ≥ 11 (initializer inputs)                                                |
 | `Concat`                | `ColumnTransformer`, `FeatureUnion`                          | axis=1 (column concat) only                                                                                   |
 | `Div`                   | `StandardScaler` (scale)                                     |                                                                                                               |
 | `Dropout`               | PyTorch Dropout layers                                       | Inference pass-through; training mask not used                                                                |
+| `Elu`                   | PyTorch `nn.ELU(alpha)`                                      | `x ≥ 0 ? x : α*(exp(x)−1)`; default α=1                                                                       |
 | `Flatten`               | PyTorch MLP preprocessing                                    | axis=1 pass-through                                                                                           |
 | `Gather`                | category indexing                                            |                                                                                                               |
 | `Gelu`                  | PyTorch `nn.GELU()` (opset 20+)                              | Supports `approximate="tanh"` and `approximate="none"` modes                                                  |
