@@ -26,11 +26,13 @@ from .translation.steps.onehotencoder import OneHotEncoderTranslator
 from .translation.steps.reshape import ReshapeTranslator
 from .translation.steps.scaler import ScalerTranslator
 from .translation.steps.abs import AbsTranslator
+from .translation.steps.avgpool import AveragePoolTranslator
 from .translation.steps.batchnorm import BatchNormalizationTranslator
 from .translation.steps.celu import CeluTranslator
 from .translation.steps.clip import ClipTranslator
 from .translation.steps.elu import EluTranslator
 from .translation.steps.erf import ErfTranslator
+from .translation.steps.gelu import GeluTranslator
 from .translation.steps.dropout import DropoutTranslator
 from .translation.steps.flatten import FlattenTranslator
 from .translation.steps.gemm import GemmTranslator
@@ -39,17 +41,27 @@ from .translation.steps.globalmaxpool import GlobalMaxPoolTranslator
 from .translation.steps.groupnorm import GroupNormalizationTranslator
 from .translation.steps.hardsigmoid import HardSigmoidTranslator
 from .translation.steps.hardswish import HardSwishTranslator
+from .translation.steps.hardtanh import HardTanhTranslator
 from .translation.steps.instancenorm import InstanceNormalizationTranslator
+from .translation.steps.layernorm import LayerNormalizationTranslator
 from .translation.steps.leakyrelu import LeakyReluTranslator
+from .translation.steps.logsigmoid import LogSigmoidTranslator
 from .translation.steps.logsoftmax import LogSoftmaxTranslator
 from .translation.steps.maxpool import MaxPoolTranslator
+from .translation.steps.mish import MishTranslator
 from .translation.steps.neg import NegTranslator
 from .translation.steps.pow import PowTranslator
+from .translation.steps.prelu import PreluTranslator
+from .translation.steps.reducemax import ReduceMaxTranslator
 from .translation.steps.reducemean import ReduceMeanTranslator
+from .translation.steps.reducemin import ReduceMinTranslator
+from .translation.steps.reducesum import ReduceSumTranslator
 from .translation.steps.relu import ReluTranslator
 from .translation.steps.selu import SeluTranslator
 from .translation.steps.sigmoid import SigmoidTranslator
 from .translation.steps.softmax import SoftmaxTranslator
+from .translation.steps.softplus import SoftplusTranslator
+from .translation.steps.softsign import SoftsignTranslator
 from .translation.steps.sqrt import SqrtTranslator
 from .translation.steps.squeeze import SqueezeTranslator, UnsqueezeTranslator
 from .translation.steps.transpose import TransposeTranslator
@@ -70,6 +82,7 @@ from .translation.variables import GraphVariables
 # makes it easier to understand the translation process.
 TRANSLATORS: dict[str, type[Translator]] = {
     "Abs": AbsTranslator,
+    "AveragePool": AveragePoolTranslator,
     "BatchNormalization": BatchNormalizationTranslator,
     "Cast": CastTranslator,
     "CastLike": CastLikeTranslator,
@@ -80,21 +93,30 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Elu": EluTranslator,
     "Erf": ErfTranslator,
     "FeatureVectorizer": FeatureVectorizerTranslator,
+    "Gelu": GeluTranslator,
     "GlobalAveragePool": GlobalAveragePoolTranslator,
     "GlobalMaxPool": GlobalMaxPoolTranslator,
     "GroupNormalization": GroupNormalizationTranslator,
     "HardSigmoid": HardSigmoidTranslator,
     "HardSwish": HardSwishTranslator,
+    "HardTanh": HardTanhTranslator,
     "InstanceNormalization": InstanceNormalizationTranslator,
+    "LayerNormalization": LayerNormalizationTranslator,
     "LeakyRelu": LeakyReluTranslator,
+    "LogSigmoid": LogSigmoidTranslator,
     "Sub": SubTranslator,
     "MatMul": MatMulTranslator,
     "Add": AddTranslator,
     "Div": DivTranslator,
     "Mul": MulTranslator,
+    "Mish": MishTranslator,
     "Neg": NegTranslator,
     "Pow": PowTranslator,
+    "PRelu": PreluTranslator,
+    "ReduceMax": ReduceMaxTranslator,
     "ReduceMean": ReduceMeanTranslator,
+    "ReduceMin": ReduceMinTranslator,
+    "ReduceSum": ReduceSumTranslator,
     "Flatten": FlattenTranslator,
     "LogSoftmax": LogSoftmaxTranslator,
     "MaxPool": MaxPoolTranslator,
@@ -104,6 +126,9 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Scaler": ScalerTranslator,
     "Selu": SeluTranslator,
     "Sigmoid": SigmoidTranslator,
+    "Softmax": SoftmaxTranslator,
+    "Softplus": SoftplusTranslator,
+    "Softsign": SoftsignTranslator,
     "Gather": GatherTranslator,
     "Gemm": GemmTranslator,
     "ArrayFeatureExtractor": ArrayFeatureExtractorTranslator,
@@ -114,7 +139,6 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Where": WhereTranslator,
     "ZipMap": ZipMapTranslator,
     "ArgMax": ArgMaxTranslator,
-    "Softmax": SoftmaxTranslator,
     "Sqrt": SqrtTranslator,
     "Squeeze": SqueezeTranslator,
     "Tanh": TanhTranslator,
