@@ -155,30 +155,43 @@ print(sql)
 The following activations export cleanly to ONNX op-types that orbital
 understands:
 
-| PyTorch module | ONNX op | orbital support |
-|---|---|---|
-| `nn.ReLU()` | `Relu` | ✅ |
-| `nn.Sigmoid()` | `Sigmoid` | ✅ |
-| `nn.Tanh()` | `Tanh` | ✅ |
-| `nn.ELU(alpha)` | `Elu` | ✅ |
-| `nn.CELU(alpha)` | `Celu` | ✅ |
-| `nn.GELU()` | `Gelu` | ✅ |
-| `nn.Dropout(p)` | `Dropout` | ✅ pass-through |
-| `nn.BatchNorm1d(n)` | `BatchNormalization` | ✅ |
-| `nn.InstanceNorm1d(n)` | `InstanceNormalization` | ✅ |
-| `nn.GroupNorm(g, n)` | `GroupNormalization` | ✅ |
-| `nn.AdaptiveAvgPool1d(1)` | `GlobalAveragePool` | ✅ |
-| `nn.AdaptiveMaxPool1d(1)` | `GlobalMaxPool` | ✅ |
-| `nn.MaxPool1d(k)` | `MaxPool` | ✅ (kernel=1) |
-| `nn.LSTM` / `nn.GRU` | `LSTM` / `GRU` | ❌ |
-| `nn.MultiheadAttention` | `MultiHeadAttention` | ❌ |
+| PyTorch module            | ONNX op                 | orbital support |
+| ------------------------- | ----------------------- | --------------- |
+| `nn.ReLU()`               | `Relu`                  | ✅                                                          |
+| `nn.Sigmoid()`            | `Sigmoid`               | ✅                                                          |
+| `nn.Tanh()`               | `Tanh`                  | ✅                                                          |
+| `nn.ELU(alpha)`           | `Elu`                   | ✅                                                          |
+| `nn.CELU(alpha)`          | `Celu`                  | ✅                                                          |
+| `nn.SELU()`               | `Selu`                  | ✅                                                          |
+| `nn.LeakyReLU(slope)`     | `LeakyRelu`             | ✅                                                          |
+| `nn.Hardsigmoid()`        | `HardSigmoid`           | ✅                                                          |
+| `nn.Hardswish()`          | `HardSwish`             | ✅                                                          |
+| `nn.GELU(approximate="tanh")` | *(decomposed)*      | ✅ via `Tanh`/`Mul`/`Add`/`Pow` ops (opset ≤ 19)           |
+| `nn.GELU(approximate="none")` | *(decomposed)*      | ✅ via `Erf`/`Mul`/`Add`/`Div` ops (opset ≤ 19)            |
+| `nn.GELU()`               | `Gelu`                  | ⚪ opset 20+ only — native `Gelu` op not yet registered     |
+| `nn.Dropout(p)`           | `Dropout`               | ✅ pass-through                                             |
+| `nn.BatchNorm1d(n)`       | `BatchNormalization`    | ✅                                                          |
+| `nn.InstanceNorm1d(n)`    | `InstanceNormalization` | ✅                                                          |
+| `nn.GroupNorm(g, n)`      | `GroupNormalization`    | ✅                                                          |
+| `nn.AdaptiveAvgPool1d(1)` | `GlobalAveragePool`     | ✅                                                          |
+| `nn.AdaptiveMaxPool1d(1)` | `GlobalMaxPool`         | ✅                                                          |
+| `nn.MaxPool1d(k)`         | `MaxPool`               | ✅ (kernel=1)                                               |
+| `nn.PReLU()`              | `PRelu`                 | ⚪ not yet registered                                       |
+| `nn.LSTM` / `nn.GRU`      | `LSTM` / `GRU`          | ❌                                                          |
+| `nn.MultiheadAttention`   | `MultiHeadAttention`    | ❌                                                          |
 
-### Notes on `erf` approximation
+### Notes on GELU decomposition
 
-The `Gelu` translator uses the approximation:
+PyTorch exports `nn.GELU()` as a sequence of primitive ONNX ops, not as a
+single `Gelu` op (which only exists in opset 20+). Orbital handles both
+decomposed forms:
 
-$$\text{GELU}(x) \approx 0.5 \cdot x \cdot \left(1 + \tanh\!\left(\sqrt{\tfrac{2}{\pi}}\cdot(x + 0.044715\,x^3)\right)\right)$$
+- **`approximate="tanh"` (PyTorch default)**: uses `Tanh`/`Mul`/`Add`/`Pow`.  
+  The approximation is $0.5 \cdot x \cdot (1 + \tanh(\sqrt{2/\pi} \cdot (x + 0.044715 x^3)))$.
 
-This is the same approximation used by PyTorch's default GELU mode
-(`approximate="tanh"`).  Maximum rounding error relative to the exact
-$\text{GELU}(x) = x \cdot \Phi(x)$ is $\lesssim 1.5 \times 10^{-3}$.
+- **`approximate="none"`**: uses `Erf`/`Mul`/`Add`/`Div`.  
+  The `Erf` translator implements the Abramowitz & Stegun 7.1.26 polynomial approximation
+  (max absolute error $\approx 1.5 \times 10^{-7}$).
+
+For opset ≥ 20 models that export a native `Gelu` op, see
+[orbital-1 #30](https://github.com/davidrsch/orbital-1/issues/30).
