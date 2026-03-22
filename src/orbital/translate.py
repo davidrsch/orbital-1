@@ -31,12 +31,18 @@ from .translation.steps.celu import CeluTranslator
 from .translation.steps.clip import ClipTranslator
 from .translation.steps.elu import EluTranslator
 from .translation.steps.erf import ErfTranslator
+from .translation.steps.dropout import DropoutTranslator
 from .translation.steps.flatten import FlattenTranslator
 from .translation.steps.gemm import GemmTranslator
+from .translation.steps.globalavgpool import GlobalAveragePoolTranslator
+from .translation.steps.globalmaxpool import GlobalMaxPoolTranslator
+from .translation.steps.groupnorm import GroupNormalizationTranslator
 from .translation.steps.hardsigmoid import HardSigmoidTranslator
 from .translation.steps.hardswish import HardSwishTranslator
+from .translation.steps.instancenorm import InstanceNormalizationTranslator
 from .translation.steps.leakyrelu import LeakyReluTranslator
 from .translation.steps.logsoftmax import LogSoftmaxTranslator
+from .translation.steps.maxpool import MaxPoolTranslator
 from .translation.steps.neg import NegTranslator
 from .translation.steps.pow import PowTranslator
 from .translation.steps.reducemean import ReduceMeanTranslator
@@ -70,11 +76,16 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Celu": CeluTranslator,
     "Clip": ClipTranslator,
     "Concat": ConcatTranslator,
+    "Dropout": DropoutTranslator,
     "Elu": EluTranslator,
     "Erf": ErfTranslator,
     "FeatureVectorizer": FeatureVectorizerTranslator,
+    "GlobalAveragePool": GlobalAveragePoolTranslator,
+    "GlobalMaxPool": GlobalMaxPoolTranslator,
+    "GroupNormalization": GroupNormalizationTranslator,
     "HardSigmoid": HardSigmoidTranslator,
     "HardSwish": HardSwishTranslator,
+    "InstanceNormalization": InstanceNormalizationTranslator,
     "LeakyRelu": LeakyReluTranslator,
     "Sub": SubTranslator,
     "MatMul": MatMulTranslator,
@@ -86,6 +97,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "ReduceMean": ReduceMeanTranslator,
     "Flatten": FlattenTranslator,
     "LogSoftmax": LogSoftmaxTranslator,
+    "MaxPool": MaxPoolTranslator,
     "Relu": ReluTranslator,
     "Reshape": ReshapeTranslator,
     "Transpose": TransposeTranslator,

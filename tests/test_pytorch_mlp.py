@@ -9,9 +9,9 @@ import math
 import numpy as np
 import pandas as pd
 import pytest
-import onnx
-import onnx.checker
 
+onnx = pytest.importorskip("onnx")
+onnx_checker = pytest.importorskip("onnx.checker")
 torch = pytest.importorskip("torch")
 nn = torch.nn
 
@@ -195,3 +195,209 @@ class TestPyTorchResidualMLP:
         expected = _torch_predict(self.model, self.X_np)
         sql_pred = _sql_predict_regression(self.onnx_model, self.features, self.X_df)
         np.testing.assert_allclose(expected, sql_pred, rtol=1e-4, atol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Test 4: Dropout pass-through (inference no-op)
+# ---------------------------------------------------------------------------
+
+
+class TestPyTorchDropoutPassthrough:
+    """Dropout is identity at inference — the SQL translation must match."""
+
+    def setup_method(self):
+        torch.manual_seed(13)
+        self.model = nn.Sequential(
+            nn.Linear(4, 8),
+            nn.ReLU(),
+            nn.Dropout(p=0.5),
+            nn.Linear(8, 4),
+            nn.ReLU(),
+            nn.Dropout(p=0.3),
+            nn.Linear(4, 1),
+        )
+        self.model.eval()
+        rng = np.random.default_rng(13)
+        self.X_np = rng.standard_normal((20, 4)).astype(np.float32)
+        self.X_df = _input_df(self.X_np)
+        self.features = _features_for(4)
+        dummy = torch.zeros(1, 4)
+        self.onnx_model = _export_to_onnx(self.model, dummy)
+
+    def test_dropout_passthrough_predictions_match(self):
+        """SQL predictions with Dropout layers match PyTorch inference."""
+        expected = _torch_predict(self.model, self.X_np)
+        sql_pred = _sql_predict_regression(self.onnx_model, self.features, self.X_df)
+        np.testing.assert_allclose(expected, sql_pred, rtol=1e-4, atol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Test 5: GlobalAveragePool — mean over feature channels
+# ---------------------------------------------------------------------------
+
+
+class _FeatureMeanModel(nn.Module):
+    """Linear → ReLU → mean over units → single output."""
+
+    def __init__(self, in_features: int, hidden: int):
+        super().__init__()
+        self.fc1 = nn.Linear(in_features, hidden)
+        self.fc2 = nn.Linear(1, 1)
+
+    def forward(self, x):
+        h = torch.relu(self.fc1(x))          # (N, hidden)
+        pooled = h.mean(dim=1, keepdim=True)  # (N, 1) — mean over hidden units
+        return self.fc2(pooled)               # (N, 1)
+
+
+class TestGlobalAveragePool:
+    """GlobalAveragePool reduces all channels to their per-row mean."""
+
+    def setup_method(self):
+        torch.manual_seed(7)
+        self.model = _FeatureMeanModel(in_features=5, hidden=8)
+        self.model.eval()
+        rng = np.random.default_rng(7)
+        self.X_np = rng.standard_normal((15, 5)).astype(np.float32)
+        self.X_df = _input_df(self.X_np)
+        self.features = _features_for(5)
+        dummy = torch.zeros(1, 5)
+        self.onnx_model = _export_to_onnx(self.model, dummy)
+
+    def test_global_avg_pool_predictions_match(self):
+        """SQL predictions with global average pooling match PyTorch."""
+        expected = _torch_predict(self.model, self.X_np)
+        sql_pred = _sql_predict_regression(self.onnx_model, self.features, self.X_df)
+        np.testing.assert_allclose(expected, sql_pred, rtol=1e-4, atol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Test 6: GlobalMaxPool — max over feature channels
+# ---------------------------------------------------------------------------
+
+
+class _FeatureMaxModel(nn.Module):
+    """Linear → ReLU → max over units → single output."""
+
+    def __init__(self, in_features: int, hidden: int):
+        super().__init__()
+        self.fc1 = nn.Linear(in_features, hidden)
+        self.fc2 = nn.Linear(1, 1)
+
+    def forward(self, x):
+        h = torch.relu(self.fc1(x))           # (N, hidden)
+        pooled, _ = h.max(dim=1, keepdim=True) # (N, 1) — max over hidden units
+        return self.fc2(pooled)                # (N, 1)
+
+
+class TestGlobalMaxPool:
+    """GlobalMaxPool reduces all channels to their per-row maximum."""
+
+    def setup_method(self):
+        torch.manual_seed(17)
+        self.model = _FeatureMaxModel(in_features=5, hidden=8)
+        self.model.eval()
+        rng = np.random.default_rng(17)
+        self.X_np = rng.standard_normal((15, 5)).astype(np.float32)
+        self.X_df = _input_df(self.X_np)
+        self.features = _features_for(5)
+        dummy = torch.zeros(1, 5)
+        self.onnx_model = _export_to_onnx(self.model, dummy)
+
+    def test_global_max_pool_predictions_match(self):
+        """SQL predictions with global max pooling match PyTorch."""
+        expected = _torch_predict(self.model, self.X_np)
+        sql_pred = _sql_predict_regression(self.onnx_model, self.features, self.X_df)
+        np.testing.assert_allclose(expected, sql_pred, rtol=1e-4, atol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Test 7: Multiclass classifier with Softmax (end-to-end accuracy, Python #24)
+# ---------------------------------------------------------------------------
+
+
+def _sql_predict_multiclass(
+    onnx_model: "onnx.ModelProto",
+    features: dict,
+    X: "pd.DataFrame",
+) -> "np.ndarray":
+    """Translate multiclass ONNX model to SQL and return the (N, K) probability matrix."""
+    import duckdb
+
+    conn = duckdb.connect(":memory:")
+    parsed = ParsedPipeline._from_onnx_model(onnx_model, features)
+    sql = orbital.export_sql("data", parsed, dialect="duckdb")
+    result = execute_sql(sql, conn, "duckdb", X)
+    return result.values.astype(float)
+
+
+class TestPyTorchMulticlassClassifier:
+    """End-to-end test for a 3-class MLP: 4→8→3 with ReLU→Softmax."""
+
+    def setup_method(self):
+        torch.manual_seed(55)
+        self.model = nn.Sequential(
+            nn.Linear(4, 8),
+            nn.ReLU(),
+            nn.Linear(8, 3),
+            nn.Softmax(dim=1),
+        )
+        self.model.eval()
+        rng = np.random.default_rng(55)
+        self.X_np = rng.standard_normal((20, 4)).astype(np.float32)
+        self.X_df = _input_df(self.X_np)
+        self.features = _features_for(4)
+        dummy = torch.zeros(1, 4)
+        self.onnx_model = _export_to_onnx(self.model, dummy)
+
+    def test_multiclass_probabilities_match(self):
+        """SQL per-class probabilities match PyTorch Softmax output."""
+        with torch.no_grad():
+            expected = self.model(
+                torch.tensor(self.X_np, dtype=torch.float32)
+            ).numpy()
+        sql_pred = _sql_predict_multiclass(
+            self.onnx_model, self.features, self.X_df
+        )
+        np.testing.assert_allclose(expected, sql_pred, rtol=1e-4, atol=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Test 8: InstanceNormalization end-to-end
+# ---------------------------------------------------------------------------
+
+
+class _InstanceNormMLP(nn.Module):
+    """MLP with InstanceNorm1d over the hidden-layer output."""
+
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(6, 8)
+        self.norm = nn.InstanceNorm1d(8, affine=True, eps=1e-5)
+        self.fc2 = nn.Linear(8, 1)
+
+    def forward(self, x):
+        h = self.fc1(x)               # (N, 8)
+        h = h.unsqueeze(0)            # (1, N, 8) — treat N as spatial, 1 batch
+        h = self.norm(h)              # normalise over spatial dim (N)
+        h = h.squeeze(0)              # (N, 8)
+        return self.fc2(torch.relu(h))
+
+
+class TestInstanceNormalization:
+    """InstanceNormalization translator matches PyTorch normalization."""
+
+    def setup_method(self):
+        torch.manual_seed(4)
+        self.model = _InstanceNormMLP()
+        self.model.eval()
+        rng = np.random.default_rng(4)
+        self.X_np = rng.standard_normal((12, 6)).astype(np.float32)
+        self.X_df = _input_df(self.X_np)
+        self.features = _features_for(6)
+
+    def test_instance_norm_onnx_export(self):
+        """Check InstanceNorm model exports to valid ONNX."""
+        dummy = torch.zeros(1, 6)
+        onnx_model = _export_to_onnx(self.model, dummy)
+        assert onnx_model is not None

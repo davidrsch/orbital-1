@@ -3,6 +3,12 @@ import sqlite3
 import math
 import sys
 
+# Pre-import orbital and its heavy C dependencies (onnx, skl2onnx) before
+# pytest's assertion-rewriting hook is active.  Without this, onnx's
+# dynamic_class_creation() in skl2onnx/algebra/onnx_ops.py triggers a
+# Windows access violation when executed through pytest's import machinery.
+import orbital  # noqa: F401 – side-effect pre-load
+
 import duckdb
 import sqlalchemy
 import numpy as np
