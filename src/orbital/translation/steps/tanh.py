@@ -1,5 +1,7 @@
 """Implementation of the Tanh operator."""
+
 import ibis
+
 from ._base_activation import UnaryActivationTranslator
 
 
@@ -14,6 +16,8 @@ def _tanh(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
 
 
 class TanhTranslator(UnaryActivationTranslator):
+    """Translate the ONNX Tanh operator via polynomial approximation."""
+
     # https://onnx.ai/onnx/operators/onnx__Tanh.html
     def _apply(self, v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
         return _tanh(v)

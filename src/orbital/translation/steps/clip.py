@@ -48,7 +48,10 @@ class ClipTranslator(Translator):
         if isinstance(data, VariablesGroup):
             self.set_output(
                 ValueVariablesGroup(
-                    {k: _clip(typing.cast(ibis.expr.types.NumericValue, v)) for k, v in data.items()}
+                    {
+                        k: _clip(typing.cast(ibis.expr.types.NumericValue, v))
+                        for k, v in data.items()
+                    }
                 )
             )
         else:

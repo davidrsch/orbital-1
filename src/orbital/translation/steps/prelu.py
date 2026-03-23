@@ -20,7 +20,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class PreluTranslator(Translator):
+    """Translate the ONNX PRelu operator: ``x if x >= 0 else slope*x``."""
+
     def process(self) -> None:
+        """Translate the PRelu node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
         slope_val = self._variables.get_initializer_value(self.inputs[1])
 
@@ -51,12 +54,14 @@ class PreluTranslator(Translator):
             keys = list(data.keys())
             cols = list(data.values())
             result: NumericVariablesGroup | ibis.expr.types.NumericValue = (
-                NumericVariablesGroup({
-                    keys[i]: self._optimizer.fold_operation(
-                        _prelu_col(cols[i], slopes[i % len(slopes)])
-                    )
-                    for i in range(len(keys))
-                })
+                NumericVariablesGroup(
+                    {
+                        keys[i]: self._optimizer.fold_operation(
+                            _prelu_col(cols[i], slopes[i % len(slopes)])
+                        )
+                        for i in range(len(keys))
+                    }
+                )
             )
         else:
             data = typing.cast(ibis.expr.types.NumericValue, data)

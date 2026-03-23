@@ -1,4 +1,5 @@
 """Implementation of the Celu operator."""
+
 import typing
 
 import ibis
@@ -8,7 +9,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class CeluTranslator(Translator):
+    """Translate the ONNX Celu operator: ``max(0, x) + min(0, alpha*(exp(x/alpha)-1))``."""
+
     def process(self) -> None:
+        """Translate the Celu node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__Celu.html
         # celu(x) = max(0, x) + min(0, alpha * (exp(x/alpha) - 1))
         data = self._variables.consume(self.inputs[0])
@@ -24,16 +28,16 @@ class CeluTranslator(Translator):
             pos = ibis.greatest(ibis.literal(0.0), v)
             neg = ibis.least(
                 ibis.literal(0.0),
-                ibis.literal(alpha) * ((v / ibis.literal(alpha)).exp() - ibis.literal(1.0)),
+                ibis.literal(alpha)
+                * ((v / ibis.literal(alpha)).exp() - ibis.literal(1.0)),
             )
             return pos + neg
 
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
-            result = NumericVariablesGroup({
-                k: self._optimizer.fold_operation(_celu(v))
-                for k, v in data.items()
-            })
+            result = NumericVariablesGroup(
+                {k: self._optimizer.fold_operation(_celu(v)) for k, v in data.items()}
+            )
         else:
             data = typing.cast(ibis.expr.types.NumericValue, data)
             result = self._optimizer.fold_operation(_celu(data))

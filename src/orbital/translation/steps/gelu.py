@@ -20,7 +20,10 @@ _SQRT_2_OVER_PI = math.sqrt(2.0 / math.pi)
 
 
 class GeluTranslator(Translator):
+    """Translate the ONNX Gelu operator (opset 20+): Gaussian Error Linear Unit."""
+
     def process(self) -> None:
+        """Translate the Gelu node, writing result to the graph."""
         # approximate="tanh": 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715*x³)))
         # approximate="none": 0.5 * x * (1 + erf(x / sqrt(2)))
         data = self._variables.consume(self.inputs[0])
@@ -49,10 +52,12 @@ class GeluTranslator(Translator):
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
             result: NumericVariablesGroup | ibis.expr.types.NumericValue = (
-                NumericVariablesGroup({
-                    k: self._optimizer.fold_operation(_gelu(v))
-                    for k, v in data.items()
-                })
+                NumericVariablesGroup(
+                    {
+                        k: self._optimizer.fold_operation(_gelu(v))
+                        for k, v in data.items()
+                    }
+                )
             )
         else:
             data = typing.cast(ibis.expr.types.NumericValue, data)

@@ -1,4 +1,5 @@
 """Implementation of the Elu operator."""
+
 import typing
 
 import ibis
@@ -8,7 +9,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class EluTranslator(Translator):
+    """Translate the ONNX Elu operator: ``x if x >= 0 else alpha*(exp(x)-1)``."""
+
     def process(self) -> None:
+        """Translate the Elu node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__Elu.html
         # elu(x) = x if x >= 0 else alpha * (exp(x) - 1)
         data = self._variables.consume(self.inputs[0])
@@ -28,10 +32,9 @@ class EluTranslator(Translator):
 
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
-            result = NumericVariablesGroup({
-                k: self._optimizer.fold_operation(_elu(v))
-                for k, v in data.items()
-            })
+            result = NumericVariablesGroup(
+                {k: self._optimizer.fold_operation(_elu(v)) for k, v in data.items()}
+            )
         else:
             data = typing.cast(ibis.expr.types.NumericValue, data)
             result = self._optimizer.fold_operation(_elu(data))

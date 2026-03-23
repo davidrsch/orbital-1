@@ -22,7 +22,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class InstanceNormalizationTranslator(Translator):
+    """Translate the ONNX InstanceNormalization operator."""
+
     def process(self) -> None:
+        """Translate the InstanceNormalization node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
         epsilon = float(self._attributes.get("epsilon", 1e-5))
 
@@ -78,9 +81,7 @@ class InstanceNormalizationTranslator(Translator):
         result = NumericVariablesGroup(
             {
                 field: self._optimizer.fold_operation(
-                    (cols[i] - mean_expr)
-                    / std_expr
-                    * ibis.literal(float(scale[i]))
+                    (cols[i] - mean_expr) / std_expr * ibis.literal(float(scale[i]))
                     + ibis.literal(float(bias[i]))
                 )
                 for i, field in enumerate(fields)

@@ -31,7 +31,9 @@ class SubTranslator(Translator):
         second_raw = self._variables.consume(self._inputs[1])
 
         # Case 1: variable - constant  (most common: Scaler/BN bias subtraction)
-        if isinstance(first_raw, (ibis.Expr, VariablesGroup)) and isinstance(second_raw, (list, tuple)):
+        if isinstance(first_raw, (ibis.Expr, VariablesGroup)) and isinstance(
+            second_raw, (list, tuple)
+        ):
             first_operand = first_raw
             sub_values = list(second_raw)
             type_check_var = first_operand
@@ -62,7 +64,8 @@ class SubTranslator(Translator):
                     )
                 self.set_output(
                     self._optimizer.fold_operation(
-                        typing.cast(ibis.expr.types.NumericValue, first_operand) - sub_values[0]
+                        typing.cast(ibis.expr.types.NumericValue, first_operand)
+                        - sub_values[0]
                     )
                 )
 
@@ -87,8 +90,12 @@ class SubTranslator(Translator):
             )
 
         # Case 4: variable - variable
-        elif isinstance(first_raw, (ibis.Expr, VariablesGroup)) and isinstance(second_raw, (ibis.Expr, VariablesGroup)):
-            if isinstance(first_raw, VariablesGroup) and isinstance(second_raw, VariablesGroup):
+        elif isinstance(first_raw, (ibis.Expr, VariablesGroup)) and isinstance(
+            second_raw, (ibis.Expr, VariablesGroup)
+        ):
+            if isinstance(first_raw, VariablesGroup) and isinstance(
+                second_raw, VariablesGroup
+            ):
                 f_keys = list(first_raw.keys())
                 s_vals = list(second_raw.values())
                 if len(f_keys) != len(s_vals):
@@ -96,11 +103,15 @@ class SubTranslator(Translator):
                         f"Sub: both variable operands must have the same number of columns ({len(f_keys)} vs {len(s_vals)})"
                     )
                 first_num = NumericVariablesGroup(first_raw)
-                second_num = NumericVariablesGroup({k: v for k, v in zip(f_keys, s_vals)})
+                second_num = NumericVariablesGroup(
+                    {k: v for k, v in zip(f_keys, s_vals)}
+                )
                 self.set_output(
                     ValueVariablesGroup(
                         {
-                            k: self._optimizer.fold_operation(first_num[k] - second_num[k])
+                            k: self._optimizer.fold_operation(
+                                first_num[k] - second_num[k]
+                            )
                             for k in f_keys
                         }
                     )
@@ -118,14 +129,14 @@ class SubTranslator(Translator):
                     "(both a column group or both a single column)."
                 )
 
-        elif not isinstance(first_raw, (ibis.Expr, VariablesGroup, list, tuple, int, float)):
-            raise ValueError(
-                "Sub: The first operand must be a numeric value."
-            )
-        elif not isinstance(second_raw, (ibis.Expr, VariablesGroup, list, tuple, int, float)):
-            raise ValueError(
-                "Sub: The second operand must be a numeric value."
-            )
+        elif not isinstance(
+            first_raw, (ibis.Expr, VariablesGroup, list, tuple, int, float)
+        ):
+            raise ValueError("Sub: The first operand must be a numeric value.")
+        elif not isinstance(
+            second_raw, (ibis.Expr, VariablesGroup, list, tuple, int, float)
+        ):
+            raise ValueError("Sub: The second operand must be a numeric value.")
         else:
             raise NotImplementedError(
                 "Sub: unsupported operand combination. Expected variable-constant, "

@@ -19,7 +19,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class GlobalAveragePoolTranslator(Translator):
+    """Translate the ONNX GlobalAveragePool operator: per-row mean across all channels."""
+
     def process(self) -> None:
+        """Translate the GlobalAveragePool node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
 
         if isinstance(data, VariablesGroup):

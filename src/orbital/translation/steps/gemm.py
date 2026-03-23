@@ -1,12 +1,18 @@
 """Implementation of the Gemm (General Matrix Multiply) operator."""
+
 import typing
+
 import ibis
+
 from ..translator import Translator
 from ..variables import NumericVariablesGroup, ValueVariablesGroup, VariablesGroup
 
 
 class GemmTranslator(Translator):
+    """Translate the ONNX Gemm operator: ``C = alpha*A@B + beta*C``."""
+
     def process(self) -> None:
+        """Translate the Gemm node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__Gemm.html
         alpha = float(self._attributes.get("alpha", 1.0))
         beta = float(self._attributes.get("beta", 1.0))
@@ -36,13 +42,13 @@ class GemmTranslator(Translator):
             # B is stored as (output_dim, input_dim) → effective (input_dim, output_dim)
             output_dim, input_dim = b_shape
 
-            def b_val(i, j):
+            def b_val(i: int, j: int) -> float:
                 return b_flat[j * input_dim + i]  # B[j][i] → W[i][j]
         else:
             # B is stored as (input_dim, output_dim)
             input_dim, output_dim = b_shape
 
-            def b_val(i, j):
+            def b_val(i: int, j: int) -> float:
                 return b_flat[i * output_dim + j]  # W[i][j]
 
         first_operand = self._variables.consume(self.inputs[0])

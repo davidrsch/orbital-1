@@ -1,4 +1,5 @@
 """Implementation of the Sqrt operator."""
+
 import typing
 
 import ibis
@@ -8,7 +9,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class SqrtTranslator(Translator):
+    """Translate the ONNX Sqrt operator: element-wise square root."""
+
     def process(self) -> None:
+        """Translate the Sqrt node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__Sqrt.html
         data = self._variables.consume(self.inputs[0])
 
@@ -20,10 +24,9 @@ class SqrtTranslator(Translator):
 
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
-            result = NumericVariablesGroup({
-                k: self._optimizer.fold_operation(v.sqrt())
-                for k, v in data.items()
-            })
+            result = NumericVariablesGroup(
+                {k: self._optimizer.fold_operation(v.sqrt()) for k, v in data.items()}
+            )
         else:
             data = typing.cast(ibis.expr.types.NumericValue, data)
             result = self._optimizer.fold_operation(data.sqrt())

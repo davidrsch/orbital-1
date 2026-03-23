@@ -10,7 +10,10 @@ from ..translator import Translator
 
 
 class DropoutTranslator(Translator):
+    """Translate the ONNX Dropout operator (inference: identity pass-through)."""
+
     def process(self) -> None:
+        """Translate the Dropout node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__Dropout.html
         # At inference mode all inputs are retained, so this is identity.
         data = self._variables.consume(self.inputs[0])

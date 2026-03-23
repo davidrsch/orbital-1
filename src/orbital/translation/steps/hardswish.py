@@ -1,4 +1,5 @@
 """Implementation of the HardSwish operator."""
+
 import typing
 
 import ibis
@@ -8,7 +9,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class HardSwishTranslator(Translator):
+    """Translate the ONNX HardSwish operator: ``x * max(0, min(1, x/6 + 0.5))``."""
+
     def process(self) -> None:
+        """Translate the HardSwish node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__HardSwish.html
         # hard_swish(x) = x * max(0, min(1, (x + 3) / 6))
         data = self._variables.consume(self.inputs[0])
@@ -19,7 +23,9 @@ class HardSwishTranslator(Translator):
         if not isinstance(type_check, ibis.expr.types.NumericValue):
             raise ValueError("HardSwish: The input must be a numeric column.")
 
-        def _hard_swish(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
+        def _hard_swish(
+            v: ibis.expr.types.NumericValue,
+        ) -> ibis.expr.types.NumericValue:
             gate = ibis.greatest(
                 ibis.literal(0.0),
                 ibis.least(
@@ -31,10 +37,12 @@ class HardSwishTranslator(Translator):
 
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
-            result = NumericVariablesGroup({
-                k: self._optimizer.fold_operation(_hard_swish(v))
-                for k, v in data.items()
-            })
+            result = NumericVariablesGroup(
+                {
+                    k: self._optimizer.fold_operation(_hard_swish(v))
+                    for k, v in data.items()
+                }
+            )
         else:
             data = typing.cast(ibis.expr.types.NumericValue, data)
             result = self._optimizer.fold_operation(_hard_swish(data))

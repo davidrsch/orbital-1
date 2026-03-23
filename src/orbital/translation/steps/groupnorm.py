@@ -22,7 +22,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class GroupNormalizationTranslator(Translator):
+    """Translate the ONNX GroupNormalization operator."""
+
     def process(self) -> None:
+        """Translate the GroupNormalization node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
         epsilon = float(self._attributes.get("epsilon", 1e-5))
         num_groups = int(self._attributes.get("num_groups", 1))
@@ -35,9 +38,7 @@ class GroupNormalizationTranslator(Translator):
                 "GroupNormalization: scale must be a constant initializer."
             )
         if not isinstance(bias, (list, tuple)):
-            raise ValueError(
-                "GroupNormalization: bias must be a constant initializer."
-            )
+            raise ValueError("GroupNormalization: bias must be a constant initializer.")
 
         if not isinstance(data, VariablesGroup):
             raise ValueError(
@@ -90,9 +91,7 @@ class GroupNormalizationTranslator(Translator):
 
             std_g = (var_g + ibis.literal(epsilon)) ** ibis.literal(0.5)
 
-            for i_local, (field, col) in enumerate(
-                zip(fields[start:end], g_cols)
-            ):
+            for i_local, (field, col) in enumerate(zip(fields[start:end], g_cols)):
                 c = start + i_local
                 result_exprs[field] = self._optimizer.fold_operation(
                     (col - mean_g) / std_g * ibis.literal(float(scale[c]))

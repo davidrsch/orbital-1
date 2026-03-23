@@ -1,4 +1,5 @@
 """Implementation of the BatchNormalization operator."""
+
 import typing
 
 import ibis
@@ -8,7 +9,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class BatchNormalizationTranslator(Translator):
+    """Translate the ONNX BatchNormalization operator (inference mode)."""
+
     def process(self) -> None:
+        """Translate the BatchNormalization node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__BatchNormalization.html
         # Inference mode only (5 inputs: X, scale γ, bias β, running_mean μ, running_var σ²)
         # y_i = ((x_i - mean_i) / sqrt(var_i + eps)) * scale_i + bias_i
@@ -21,7 +25,9 @@ class BatchNormalizationTranslator(Translator):
         var = self._variables.get_initializer_value(self.inputs[4])
 
         if not isinstance(scale, (list, tuple)):
-            raise ValueError("BatchNormalization: scale must be a constant initializer.")
+            raise ValueError(
+                "BatchNormalization: scale must be a constant initializer."
+            )
         if not isinstance(bias, (list, tuple)):
             raise ValueError("BatchNormalization: bias must be a constant initializer.")
         if not isinstance(mean, (list, tuple)):
@@ -43,7 +49,9 @@ class BatchNormalizationTranslator(Translator):
             vr: float,
         ) -> ibis.expr.types.NumericValue:
             std = (vr + epsilon) ** 0.5
-            return (v - ibis.literal(m)) / ibis.literal(std) * ibis.literal(s) + ibis.literal(b)
+            return (v - ibis.literal(m)) / ibis.literal(std) * ibis.literal(
+                s
+            ) + ibis.literal(b)
 
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
@@ -53,18 +61,20 @@ class BatchNormalizationTranslator(Translator):
                     f"BatchNormalization: number of input features ({len(fields)}) "
                     f"must match scale length ({len(scale)})."
                 )
-            result = NumericVariablesGroup({
-                field: self._optimizer.fold_operation(
-                    _bn(
-                        data[field],
-                        float(scale[i]),
-                        float(bias[i]),
-                        float(mean[i]),
-                        float(var[i]),
+            result = NumericVariablesGroup(
+                {
+                    field: self._optimizer.fold_operation(
+                        _bn(
+                            data[field],
+                            float(scale[i]),
+                            float(bias[i]),
+                            float(mean[i]),
+                            float(var[i]),
+                        )
                     )
-                )
-                for i, field in enumerate(fields)
-            })
+                    for i, field in enumerate(fields)
+                }
+            )
         else:
             if len(scale) != 1:
                 raise ValueError(
@@ -72,7 +82,9 @@ class BatchNormalizationTranslator(Translator):
                 )
             data = typing.cast(ibis.expr.types.NumericValue, data)
             result = self._optimizer.fold_operation(
-                _bn(data, float(scale[0]), float(bias[0]), float(mean[0]), float(var[0]))
+                _bn(
+                    data, float(scale[0]), float(bias[0]), float(mean[0]), float(var[0])
+                )
             )
 
         self.set_output(result)

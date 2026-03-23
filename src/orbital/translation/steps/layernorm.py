@@ -22,7 +22,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class LayerNormalizationTranslator(Translator):
+    """Translate the ONNX LayerNormalization operator (opset 17+)."""
+
     def process(self) -> None:
+        """Translate the LayerNormalization node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
         epsilon = float(self._attributes.get("epsilon", 1e-5))
 
@@ -75,9 +78,7 @@ class LayerNormalizationTranslator(Translator):
         result = NumericVariablesGroup(
             {
                 field: self._optimizer.fold_operation(
-                    (cols[i] - mean_expr)
-                    / std_expr
-                    * ibis.literal(float(scale[i]))
+                    (cols[i] - mean_expr) / std_expr * ibis.literal(float(scale[i]))
                     + ibis.literal(float(bias[i]) if bias is not None else 0.0)
                 )
                 for i, field in enumerate(fields)

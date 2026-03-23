@@ -18,7 +18,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class GlobalMaxPoolTranslator(Translator):
+    """Translate the ONNX GlobalMaxPool operator: per-row maximum across all channels."""
+
     def process(self) -> None:
+        """Translate the GlobalMaxPool node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
 
         if isinstance(data, VariablesGroup):

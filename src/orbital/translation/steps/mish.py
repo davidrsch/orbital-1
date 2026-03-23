@@ -15,6 +15,8 @@ from .tanh import _tanh
 
 
 class MishTranslator(UnaryActivationTranslator):
+    """Translate the ONNX Mish operator: ``x * tanh(softplus(x))``."""
+
     # https://onnx.ai/onnx/operators/onnx__Mish.html
     def _apply(self, v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
         softplus = (ibis.literal(1.0) + v.exp()).ln()

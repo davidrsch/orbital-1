@@ -1,4 +1,5 @@
 """Implementation of the Pow operator."""
+
 import typing
 
 import ibis
@@ -8,7 +9,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class PowTranslator(Translator):
+    """Translate the ONNX Pow operator: element-wise power ``x ** y``."""
+
     def process(self) -> None:
+        """Translate the Pow node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__Pow.html
         first_operand = self._variables.consume(self.inputs[0])
 
@@ -42,14 +46,18 @@ class PowTranslator(Translator):
             _exponent = second_operand
 
             def _op(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:  # type: ignore[misc]
-                return v ** _exponent
+                return v**_exponent
 
         if isinstance(first_operand, VariablesGroup):
             first_operand = NumericVariablesGroup(first_operand)
-            result: ibis.expr.types.NumericValue | NumericVariablesGroup = NumericVariablesGroup({
-                k: self._optimizer.fold_operation(_op(v))
-                for k, v in first_operand.items()
-            })
+            result: ibis.expr.types.NumericValue | NumericVariablesGroup = (
+                NumericVariablesGroup(
+                    {
+                        k: self._optimizer.fold_operation(_op(v))
+                        for k, v in first_operand.items()
+                    }
+                )
+            )
         else:
             first_operand = typing.cast(ibis.expr.types.NumericValue, first_operand)
             result = self._optimizer.fold_operation(_op(first_operand))

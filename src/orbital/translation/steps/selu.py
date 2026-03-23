@@ -1,4 +1,5 @@
 """Implementation of the Selu operator."""
+
 import typing
 
 import ibis
@@ -12,7 +13,10 @@ _SELU_GAMMA = 1.0507009873554805
 
 
 class SeluTranslator(Translator):
+    """Translate the ONNX Selu operator: scaled ELU activation."""
+
     def process(self) -> None:
+        """Translate the Selu node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__Selu.html
         # selu(x) = gamma * (x if x > 0 else alpha * (exp(x) - 1))
         data = self._variables.consume(self.inputs[0])
@@ -33,10 +37,9 @@ class SeluTranslator(Translator):
 
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
-            result = NumericVariablesGroup({
-                k: self._optimizer.fold_operation(_selu(v))
-                for k, v in data.items()
-            })
+            result = NumericVariablesGroup(
+                {k: self._optimizer.fold_operation(_selu(v)) for k, v in data.items()}
+            )
         else:
             data = typing.cast(ibis.expr.types.NumericValue, data)
             result = self._optimizer.fold_operation(_selu(data))

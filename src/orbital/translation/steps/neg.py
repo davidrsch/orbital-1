@@ -1,4 +1,5 @@
 """Implementation of the Neg operator."""
+
 import typing
 
 import ibis
@@ -8,7 +9,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class NegTranslator(Translator):
+    """Translate the ONNX Neg operator: element-wise negation."""
+
     def process(self) -> None:
+        """Translate the Neg node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__Neg.html
         data = self._variables.consume(self.inputs[0])
 
@@ -20,10 +24,9 @@ class NegTranslator(Translator):
 
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
-            result = NumericVariablesGroup({
-                k: self._optimizer.fold_operation(-v)
-                for k, v in data.items()
-            })
+            result = NumericVariablesGroup(
+                {k: self._optimizer.fold_operation(-v) for k, v in data.items()}
+            )
         else:
             data = typing.cast(ibis.expr.types.NumericValue, data)
             result = self._optimizer.fold_operation(-data)

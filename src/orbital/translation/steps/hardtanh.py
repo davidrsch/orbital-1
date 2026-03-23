@@ -18,6 +18,8 @@ from ._base_activation import UnaryActivationTranslator
 
 
 class HardTanhTranslator(UnaryActivationTranslator):
+    """Translate the ONNX HardTanh operator: ``clip(x, -1, 1)``."""
+
     def _apply(self, v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
         return ibis.cases(
             (v < ibis.literal(-1.0), ibis.literal(-1.0)),

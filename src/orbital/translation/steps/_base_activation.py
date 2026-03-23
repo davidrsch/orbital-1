@@ -20,9 +20,7 @@ class UnaryActivationTranslator(Translator):
     """
 
     @abc.abstractmethod
-    def _apply(
-        self, v: ibis.expr.types.NumericValue
-    ) -> ibis.expr.types.NumericValue:
+    def _apply(self, v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
         """Apply the activation to a single ibis numeric expression."""
 
     def process(self) -> None:

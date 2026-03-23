@@ -20,11 +20,12 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class AveragePoolTranslator(Translator):
+    """Translate the ONNX AveragePool operator for the SQL/tabular context."""
+
     def process(self) -> None:
+        """Translate the AveragePool node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
-        kernel_shape: list[int] = list(
-            self._attributes.get("kernel_shape", [1])
-        )
+        kernel_shape: list[int] = list(self._attributes.get("kernel_shape", [1]))
 
         # Trivial case: kernel = 1 everywhere → identity.
         if all(k == 1 for k in kernel_shape):

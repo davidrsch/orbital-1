@@ -17,5 +17,7 @@ from ._base_activation import UnaryActivationTranslator
 
 
 class LogSigmoidTranslator(UnaryActivationTranslator):
+    """Translate the ONNX LogSigmoid operator: ``log(sigmoid(x))``."""
+
     def _apply(self, v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
         return -(ibis.literal(1.0) + (-v).exp()).ln()

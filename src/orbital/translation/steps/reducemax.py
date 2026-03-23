@@ -16,7 +16,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class ReduceMaxTranslator(Translator):
+    """Translate the ONNX ReduceMax operator over the feature axis."""
+
     def process(self) -> None:
+        """Translate the ReduceMax node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
 
         # Axes can be an attribute (opset < 18) or a second input (opset >= 18).
@@ -38,7 +41,9 @@ class ReduceMaxTranslator(Translator):
             data = NumericVariablesGroup(data)
             cols = list(data.values())
             if len(cols) == 0:
-                raise ValueError("ReduceMax: input group must have at least one column.")
+                raise ValueError(
+                    "ReduceMax: input group must have at least one column."
+                )
             result: ibis.expr.types.NumericValue = cols[0]
             for col in cols[1:]:
                 result = ibis.greatest(result, col)

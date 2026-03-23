@@ -1,4 +1,5 @@
 """Implementation of the Erf operator."""
+
 import typing
 
 import ibis
@@ -31,22 +32,20 @@ def _erf_approx(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue
     # Horner evaluation: t * (a1 + t*(a2 + t*(a3 + t*(a4 + t*a5))))
     poly = t * (
         ibis.literal(_A1)
-        + t * (
+        + t
+        * (
             ibis.literal(_A2)
-            + t * (
-                ibis.literal(_A3)
-                + t * (
-                    ibis.literal(_A4)
-                    + t * ibis.literal(_A5)
-                )
-            )
+            + t * (ibis.literal(_A3) + t * (ibis.literal(_A4) + t * ibis.literal(_A5)))
         )
     )
     return sign * (ibis.literal(1.0) - poly * (ax * ax).negate().exp())
 
 
 class ErfTranslator(Translator):
+    """Translate the ONNX Erf operator using a polynomial approximation."""
+
     def process(self) -> None:
+        """Translate the Erf node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__Erf.html
         data = self._variables.consume(self.inputs[0])
 
@@ -58,10 +57,12 @@ class ErfTranslator(Translator):
 
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
-            result = NumericVariablesGroup({
-                k: self._optimizer.fold_operation(_erf_approx(v))
-                for k, v in data.items()
-            })
+            result = NumericVariablesGroup(
+                {
+                    k: self._optimizer.fold_operation(_erf_approx(v))
+                    for k, v in data.items()
+                }
+            )
         else:
             data = typing.cast(ibis.expr.types.NumericValue, data)
             result = self._optimizer.fold_operation(_erf_approx(data))

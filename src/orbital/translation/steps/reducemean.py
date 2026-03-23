@@ -1,5 +1,4 @@
 """Implementation of the ReduceMean operator."""
-import typing
 
 import ibis
 
@@ -8,7 +7,10 @@ from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class ReduceMeanTranslator(Translator):
+    """Translate the ONNX ReduceMean operator over the feature axis."""
+
     def process(self) -> None:
+        """Translate the ReduceMean node, writing result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__ReduceMean.html
         # Only axis=-1 / axis=1 (reduce over the feature dimension) is supported.
         data = self._variables.consume(self.inputs[0])
@@ -33,7 +35,9 @@ class ReduceMeanTranslator(Translator):
             cols = list(data.values())
             n = len(cols)
             if n == 0:
-                raise ValueError("ReduceMean: input group must have at least one column.")
+                raise ValueError(
+                    "ReduceMean: input group must have at least one column."
+                )
             mean_expr: ibis.expr.types.NumericValue = cols[0]
             for col in cols[1:]:
                 mean_expr = mean_expr + col
