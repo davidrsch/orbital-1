@@ -8,33 +8,24 @@ import ibis
 from .ast import ParsedPipeline
 from .translation.optimizer import Optimizer
 from .translation.options import TranslationOptions
+from .translation.steps.abs import AbsTranslator
 from .translation.steps.add import AddTranslator
 from .translation.steps.argmax import ArgMaxTranslator
 from .translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
-from .translation.steps.cast import CastLikeTranslator, CastTranslator
-from .translation.steps.concat import ConcatTranslator, FeatureVectorizerTranslator
-from .translation.steps.div import DivTranslator
-from .translation.steps.gather import GatherTranslator
-from .translation.steps.identity import IdentityTranslator
-from .translation.steps.imputer import ImputerTranslator
-from .translation.steps.labelencoder import LabelEncoderTranslator
-from .translation.steps.linearclass import LinearClassifierTranslator
-from .translation.steps.linearreg import LinearRegressorTranslator
-from .translation.steps.matmul import MatMulTranslator
-from .translation.steps.mul import MulTranslator
-from .translation.steps.onehotencoder import OneHotEncoderTranslator
-from .translation.steps.reshape import ReshapeTranslator
-from .translation.steps.scaler import ScalerTranslator
-from .translation.steps.abs import AbsTranslator
 from .translation.steps.avgpool import AveragePoolTranslator
 from .translation.steps.batchnorm import BatchNormalizationTranslator
+from .translation.steps.cast import CastLikeTranslator, CastTranslator
 from .translation.steps.celu import CeluTranslator
 from .translation.steps.clip import ClipTranslator
+from .translation.steps.concat import ConcatTranslator, FeatureVectorizerTranslator
+from .translation.steps.div import DivTranslator
+from .translation.steps.dropout import DropoutTranslator
 from .translation.steps.elu import EluTranslator
 from .translation.steps.erf import ErfTranslator
-from .translation.steps.gelu import GeluTranslator
-from .translation.steps.dropout import DropoutTranslator
+from .translation.steps.exp import ExpTranslator
 from .translation.steps.flatten import FlattenTranslator
+from .translation.steps.gather import GatherTranslator
+from .translation.steps.gelu import GeluTranslator
 from .translation.steps.gemm import GemmTranslator
 from .translation.steps.globalavgpool import GlobalAveragePoolTranslator
 from .translation.steps.globalmaxpool import GlobalMaxPoolTranslator
@@ -42,14 +33,22 @@ from .translation.steps.groupnorm import GroupNormalizationTranslator
 from .translation.steps.hardsigmoid import HardSigmoidTranslator
 from .translation.steps.hardswish import HardSwishTranslator
 from .translation.steps.hardtanh import HardTanhTranslator
+from .translation.steps.identity import IdentityTranslator
+from .translation.steps.imputer import ImputerTranslator
 from .translation.steps.instancenorm import InstanceNormalizationTranslator
+from .translation.steps.labelencoder import LabelEncoderTranslator
 from .translation.steps.layernorm import LayerNormalizationTranslator
 from .translation.steps.leakyrelu import LeakyReluTranslator
+from .translation.steps.linearclass import LinearClassifierTranslator
+from .translation.steps.linearreg import LinearRegressorTranslator
 from .translation.steps.logsigmoid import LogSigmoidTranslator
 from .translation.steps.logsoftmax import LogSoftmaxTranslator
+from .translation.steps.matmul import MatMulTranslator
 from .translation.steps.maxpool import MaxPoolTranslator
 from .translation.steps.mish import MishTranslator
+from .translation.steps.mul import MulTranslator
 from .translation.steps.neg import NegTranslator
+from .translation.steps.onehotencoder import OneHotEncoderTranslator
 from .translation.steps.pow import PowTranslator
 from .translation.steps.prelu import PreluTranslator
 from .translation.steps.reducemax import ReduceMaxTranslator
@@ -57,6 +56,9 @@ from .translation.steps.reducemean import ReduceMeanTranslator
 from .translation.steps.reducemin import ReduceMinTranslator
 from .translation.steps.reducesum import ReduceSumTranslator
 from .translation.steps.relu import ReluTranslator
+from .translation.steps.reshape import ReshapeTranslator
+from .translation.steps.rmsnorm import RMSNormalizationTranslator
+from .translation.steps.scaler import ScalerTranslator
 from .translation.steps.selu import SeluTranslator
 from .translation.steps.sigmoid import SigmoidTranslator
 from .translation.steps.softmax import SoftmaxTranslator
@@ -64,9 +66,11 @@ from .translation.steps.softplus import SoftplusTranslator
 from .translation.steps.softsign import SoftsignTranslator
 from .translation.steps.sqrt import SqrtTranslator
 from .translation.steps.squeeze import SqueezeTranslator, UnsqueezeTranslator
-from .translation.steps.transpose import TransposeTranslator
 from .translation.steps.sub import SubTranslator
+from .translation.steps.swish import SwishTranslator
 from .translation.steps.tanh import TanhTranslator
+from .translation.steps.thresholdedrelu import ThresholdedReluTranslator
+from .translation.steps.transpose import TransposeTranslator
 from .translation.steps.trees import (
     TreeEnsembleClassifierTranslator,
     TreeEnsembleRegressorTranslator,
@@ -92,6 +96,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Dropout": DropoutTranslator,
     "Elu": EluTranslator,
     "Erf": ErfTranslator,
+    "Exp": ExpTranslator,
     "FeatureVectorizer": FeatureVectorizerTranslator,
     "Gelu": GeluTranslator,
     "GlobalAveragePool": GlobalAveragePoolTranslator,
@@ -122,6 +127,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "MaxPool": MaxPoolTranslator,
     "Relu": ReluTranslator,
     "Reshape": ReshapeTranslator,
+    "RMSNormalization": RMSNormalizationTranslator,
     "Transpose": TransposeTranslator,
     "Scaler": ScalerTranslator,
     "Selu": SeluTranslator,
@@ -129,6 +135,8 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Softmax": SoftmaxTranslator,
     "Softplus": SoftplusTranslator,
     "Softsign": SoftsignTranslator,
+    "Swish": SwishTranslator,
+    "ThresholdedRelu": ThresholdedReluTranslator,
     "Gather": GatherTranslator,
     "Gemm": GemmTranslator,
     "ArrayFeatureExtractor": ArrayFeatureExtractorTranslator,
