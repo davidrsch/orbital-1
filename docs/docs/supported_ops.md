@@ -197,6 +197,7 @@ understands:
 | `nn.Softplus()`               | `Softplus`              | ✅ `ln(1 + exp(x))`                                   |
 | `nn.Mish()`                   | `Mish`                  | ✅ `x * tanh(softplus(x))`                            |
 | `nn.LogSigmoid()`             | `LogSigmoid`            | ✅ `-ln(1 + exp(-x))`                                 |
+| `nn.LogSoftmax()`             | `LogSoftmax`            | ✅ numerically stable log-sum-exp; axis=-1/1 only     |
 | `nn.Softsign()`               | `Softsign`              | ✅ `x / (1 + \|x\|)`                                  |
 | `nn.GELU(approximate="tanh")` | _(decomposed)_          | ✅ via `Tanh`/`Mul`/`Add`/`Pow` ops (opset ≤ 19)      |
 | `nn.GELU(approximate="none")` | _(decomposed)_          | ✅ via `Erf`/`Mul`/`Add`/`Div` ops (opset ≤ 19)       |
