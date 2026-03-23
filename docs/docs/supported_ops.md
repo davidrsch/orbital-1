@@ -223,7 +223,7 @@ decomposed forms:
   The approximation is $0.5 \cdot x \cdot (1 + \tanh(\sqrt{2/\pi} \cdot (x + 0.044715 x^3)))$.
 
 - **`approximate="none"`**: uses `Erf`/`Mul`/`Add`/`Div`.  
-  The `Erf` translator implements the Abramowitz & Stegun 7.1.26 polynomial approximation
+  The `Erf` translator implements the Abramowitz & Stegun 7.1.28 polynomial approximation
   (max absolute error $\approx 1.5 \times 10^{-7}$).
 
 For opset ≥ 20 models that export a native `Gelu` op, orbital now registers
