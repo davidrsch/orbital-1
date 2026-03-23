@@ -40,9 +40,9 @@ any known limitations.
 | `LayerNormalization`    | PyTorch `nn.LayerNorm`, keras3 `LayerNormalization`          | Per-row normalise using inline mean/var expressions (opset 17+)                                               |
 | `LeakyRelu`             | PyTorch `nn.LeakyReLU(slope)`                                | `x ≥ 0 ? x : α·x`; α from node attribute, default α=0.01                                                      |
 | `LogSigmoid`            | PyTorch `nn.LogSigmoid()` custom exports                     | `ln(sigmoid(x)) = -ln(1 + exp(-x))`                                                                           |
-| `LogSoftmax`            | PyTorch log-probability output heads                         | Numerically stable log-sum-exp                                                                                |
+| `LogSoftmax`            | PyTorch log-probability output heads                         | Numerically stable log-sum-exp; axis=-1 / axis=1 only                                                         |
 | `MatMul`                | general matrix multiply                                      |                                                                                                               |
-| `MaxPool`               | PyTorch `nn.MaxPool1d`                                       | kernel_shape=1 pass-through; global max for other configs                                                     |
+| `MaxPool`               | PyTorch `nn.MaxPool1d`                                       | kernel_shape=1 pass-through; kernel_shape=[n_cols] global max; all other shapes raise `NotImplementedError`   |
 | `Mish`                  | PyTorch `nn.Mish()`                                          | `x * tanh(softplus(x))`                                                                                       |
 | `Mul`                   | element-wise multiply                                        |                                                                                                               |
 | `Neg`                   | Unary negation; used in sigmoid `exp(-x)` decomposition      | Element-wise `-x`                                                                                             |
