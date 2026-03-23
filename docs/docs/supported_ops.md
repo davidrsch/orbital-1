@@ -36,8 +36,8 @@ any known limitations.
 | `HardSwish`             | PyTorch `nn.Hardswish()`                                     | `x * max(0, min(1, (x+3)/6))`                                                                                 |
 | `HardTanh`              | PyTorch `nn.Hardtanh()` exports                              | Equivalent to `Clip(x, -1, 1)`                                                                                |
 | `Identity`              | no-op pass-through                                           |                                                                                                               |
-| `InstanceNormalization` | PyTorch `nn.InstanceNorm1d`                                  | Per-row normalise across all channels; `(x-mean)/sqrt(var+eps)`                                               |
-| `LayerNormalization`    | PyTorch `nn.LayerNorm`, keras3 `LayerNormalization`          | Per-row normalise using inline mean/var expressions (opset 17+)                                               |
+| `InstanceNormalization` | PyTorch `nn.InstanceNorm1d`                                  | Per-row normalise across all channels; `(x-mean)/sqrt(var+eps)`; default ε=1e-5 (ONNX spec)                   |
+| `LayerNormalization`    | PyTorch `nn.LayerNorm`, keras3 `LayerNormalization`          | Per-row normalise using inline mean/var expressions (opset 17+); default ε=1e-5 (ONNX spec)                   |
 | `LeakyRelu`             | PyTorch `nn.LeakyReLU(slope)`                                | `x ≥ 0 ? x : α·x`; α from node attribute, default α=0.01                                                      |
 | `LogSigmoid`            | PyTorch `nn.LogSigmoid()` custom exports                     | `ln(sigmoid(x)) = -ln(1 + exp(-x))`                                                                           |
 | `LogSoftmax`            | PyTorch log-probability output heads                         | Numerically stable log-sum-exp; axis=-1 / axis=1 only                                                         |
@@ -181,38 +181,38 @@ print(sql)
 The following activations export cleanly to ONNX op-types that orbital
 understands:
 
-| PyTorch module                | ONNX op                 | orbital support                                       |
-| ----------------------------- | ----------------------- | ----------------------------------------------------- |
-| `nn.ReLU()`                   | `Relu`                  | ✅                                                    |
-| `nn.Sigmoid()`                | `Sigmoid`               | ✅                                                    |
-| `nn.Tanh()`                   | `Tanh`                  | ✅                                                    |
-| `nn.ELU(alpha)`               | `Elu`                   | ✅                                                    |
-| `nn.CELU(alpha)`              | `Celu`                  | ✅                                                    |
-| `nn.SELU()`                   | `Selu`                  | ✅                                                    |
-| `nn.LeakyReLU(slope)`         | `LeakyRelu`             | ✅                                                    |
-| `nn.Hardsigmoid()`            | `HardSigmoid`           | ✅                                                    |
-| `nn.Hardswish()`              | `HardSwish`             | ✅                                                    |
-| `nn.Hardtanh()`               | `HardTanh`              | ✅ clips to [-1, 1]                                   |
-| `nn.PReLU()`                  | `PRelu`                 | ✅ per-channel slope from initializer                 |
-| `nn.Softplus()`               | `Softplus`              | ✅ `ln(1 + exp(x))`                                   |
-| `nn.Mish()`                   | `Mish`                  | ✅ `x * tanh(softplus(x))`                            |
-| `nn.LogSigmoid()`             | `LogSigmoid`            | ✅ `-ln(1 + exp(-x))`                                 |
-| `nn.LogSoftmax()`             | `LogSoftmax`            | ✅ numerically stable log-sum-exp; axis=-1/1 only     |
-| `nn.Softsign()`               | `Softsign`              | ✅ `x / (1 + \|x\|)`                                  |
-| `nn.GELU(approximate="tanh")` | _(decomposed)_          | ✅ via `Tanh`/`Mul`/`Add`/`Pow` ops (opset ≤ 19)      |
-| `nn.GELU(approximate="none")` | _(decomposed)_          | ✅ via `Erf`/`Mul`/`Add`/`Div` ops (opset ≤ 19)       |
-| `nn.GELU()`                   | `Gelu`                  | ✅ native `Gelu` op (opset 20+); both modes supported |
-| `nn.Dropout(p)`               | `Dropout`               | ✅ pass-through                                       |
-| `nn.BatchNorm1d(n)`           | `BatchNormalization`    | ✅                                                    |
-| `nn.InstanceNorm1d(n)`        | `InstanceNormalization` | ✅                                                    |
-| `nn.LayerNorm(n)`             | `LayerNormalization`    | ✅ per-row symbolic normalisation (opset 17+)         |
-| `nn.GroupNorm(g, n)`          | `GroupNormalization`    | ✅                                                    |
-| `nn.AdaptiveAvgPool1d(1)`     | `GlobalAveragePool`     | ✅                                                    |
-| `nn.AdaptiveMaxPool1d(1)`     | `GlobalMaxPool`         | ✅                                                    |
-| `nn.MaxPool1d(k)`             | `MaxPool`               | ✅ (kernel=1 or global)                               |
-| `nn.AvgPool1d(k)` / global    | `AveragePool`           | ✅ kernel=1 pass-through; global mean                 |
-| `nn.LSTM` / `nn.GRU`          | `LSTM` / `GRU`          | ❌                                                    |
-| `nn.MultiheadAttention`       | `MultiHeadAttention`    | ❌                                                    |
+| PyTorch module                | ONNX op                 | orbital support                                                                       |
+| ----------------------------- | ----------------------- | ------------------------------------------------------------------------------------- |
+| `nn.ReLU()`                   | `Relu`                  | ✅                                                                                    |
+| `nn.Sigmoid()`                | `Sigmoid`               | ✅                                                                                    |
+| `nn.Tanh()`                   | `Tanh`                  | ✅                                                                                    |
+| `nn.ELU(alpha)`               | `Elu`                   | ✅                                                                                    |
+| `nn.CELU(alpha)`              | `Celu`                  | ✅                                                                                    |
+| `nn.SELU()`                   | `Selu`                  | ✅                                                                                    |
+| `nn.LeakyReLU(slope)`         | `LeakyRelu`             | ✅                                                                                    |
+| `nn.Hardsigmoid()`            | `HardSigmoid`           | ✅                                                                                    |
+| `nn.Hardswish()`              | `HardSwish`             | ✅                                                                                    |
+| `nn.Hardtanh()`               | `HardTanh`              | ✅ clips to [-1, 1]                                                                   |
+| `nn.PReLU()`                  | `PRelu`                 | ✅ per-channel slope from initializer                                                 |
+| `nn.Softplus()`               | `Softplus`              | ✅ `ln(1 + exp(x))`                                                                   |
+| `nn.Mish()`                   | `Mish`                  | ✅ `x * tanh(softplus(x))`                                                            |
+| `nn.LogSigmoid()`             | `LogSigmoid`            | ✅ `-ln(1 + exp(-x))`                                                                 |
+| `nn.LogSoftmax()`             | `LogSoftmax`            | ✅ numerically stable log-sum-exp; axis=-1/1 only                                     |
+| `nn.Softsign()`               | `Softsign`              | ✅ `x / (1 + \|x\|)`                                                                  |
+| `nn.GELU(approximate="tanh")` | _(decomposed)_          | ✅ via `Tanh`/`Mul`/`Add`/`Pow` ops (opset ≤ 19)                                      |
+| `nn.GELU(approximate="none")` | _(decomposed)_          | ✅ via `Erf`/`Mul`/`Add`/`Div` ops (opset ≤ 19)                                       |
+| `nn.GELU()`                   | `Gelu`                  | ✅ native `Gelu` op (opset 20+); both modes supported                                 |
+| `nn.Dropout(p)`               | `Dropout`               | ✅ pass-through                                                                       |
+| `nn.BatchNorm1d(n)`           | `BatchNormalization`    | ✅                                                                                    |
+| `nn.InstanceNorm1d(n)`        | `InstanceNormalization` | ✅ default ε=1e-5 (ONNX spec; Keras3 default is 1e-3)                                 |
+| `nn.LayerNorm(n)`             | `LayerNormalization`    | ✅ per-row symbolic normalisation; default ε=1e-5 (ONNX spec; Keras3 default is 1e-3) |
+| `nn.GroupNorm(g, n)`          | `GroupNormalization`    | ✅                                                                                    |
+| `nn.AdaptiveAvgPool1d(1)`     | `GlobalAveragePool`     | ✅                                                                                    |
+| `nn.AdaptiveMaxPool1d(1)`     | `GlobalMaxPool`         | ✅                                                                                    |
+| `nn.MaxPool1d(k)`             | `MaxPool`               | ✅ (kernel=1 or global)                                                               |
+| `nn.AvgPool1d(k)` / global    | `AveragePool`           | ✅ kernel=1 pass-through; global mean                                                 |
+| `nn.LSTM` / `nn.GRU`          | `LSTM` / `GRU`          | ❌                                                                                    |
+| `nn.MultiheadAttention`       | `MultiHeadAttention`    | ❌                                                                                    |
 
 ### Notes on GELU decomposition
 
