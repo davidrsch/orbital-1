@@ -1,8 +1,12 @@
 """Test individual pipeline steps/translators."""
 
+import math
+
 import onnx
 import ibis
+import numpy as np
 import pytest
+from onnx import TensorProto, helper
 
 from orbital.translate import TRANSLATORS
 from orbital.translation.steps.softmax import SoftmaxTranslator
@@ -6106,3 +6110,444 @@ class TestMaxPoolTranslator:
             variables.peek_variable("output")
         ).tolist()
         assert result == [5.0, 9.0]  # max(1,5,3)=5, max(9,2,7)=9
+
+
+# ---------------------------------------------------------------------------
+# Helper: build an ONNX graph with weight initializers
+# ---------------------------------------------------------------------------
+
+def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
+    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
+    return helper.make_graph(
+        [node],
+        "test_graph",
+        inputs_info,
+        outputs_info,
+        initializer=initializers,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: ConvTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestConvTranslator:
+    """Tests for the ONNX Conv (1-D convolution) translator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_conv_registered(self):
+        from orbital.translation.steps.conv import ConvTranslator
+        assert TRANSLATORS.get("Conv") is ConvTranslator
+
+    def test_conv1d_single_filter_single_channel_valid(self):
+        """1 filter, 1 in-channel, kernel=[1,1,1], no bias, valid pad.
+
+        Input  : [1, 2, 3, 4]  shape [1, 1, 4] (NCHW, C=1, W=4)
+        Kernel : shape [1, 1, 3] = [[[1, 1, 1]]]  (C_out=1, C_in=1, kW=3)
+        Output : shape [1, 1, 2] (valid: W_out = 4-3+1 = 2)
+          pos 0: 1+2+3 = 6
+          pos 1: 2+3+4 = 9
+        """
+        from orbital.translation.steps.conv import ConvTranslator
+
+        # Input group: C_in * W_in = 1*4 columns
+        table = ibis.memtable(
+            {"x0": [1.0], "x1": [2.0], "x2": [3.0], "x3": [4.0]}
+        )
+
+        W_data = [1.0, 1.0, 1.0]  # shape [1, 1, 3]
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 1, 3], W_data)
+        node = helper.make_node("Conv", inputs=["X", "W"], outputs=["Y"])
+        node.attribute.extend([
+            helper.make_attribute("kernel_shape", [3]),
+        ])
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, 1, 4])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [None, 1, 2])],
+            [W_tensor],
+        )
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup(
+            {f"x{i}": table[f"x{i}"] for i in range(4)}
+        )
+
+        translator = ConvTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        translator.process()
+
+        result = variables.peek_variable("Y")
+        assert isinstance(result, ValueVariablesGroup)
+        assert len(result) == 2  # 1 filter  2 output positions
+
+        backend = ibis.duckdb.connect()
+        vals = [backend.execute(v).tolist()[0] for v in result.values()]
+        assert abs(vals[0] - 6.0) < 1e-6
+        assert abs(vals[1] - 9.0) < 1e-6
+
+    def test_conv1d_with_bias(self):
+        """Conv1D with a constant bias applied to every output position."""
+        from orbital.translation.steps.conv import ConvTranslator
+
+        table = ibis.memtable({"x0": [1.0], "x1": [2.0], "x2": [3.0]})
+
+        W_data = [1.0, 0.0, 0.0]  # identity kernel: picks first element
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 1, 3], W_data)
+        B_tensor = helper.make_tensor("B", TensorProto.FLOAT, [1], [10.0])
+        node = helper.make_node("Conv", inputs=["X", "W", "B"], outputs=["Y"])
+        node.attribute.extend([helper.make_attribute("kernel_shape", [3])])
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, 1, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [None, 1, 1])],
+            [W_tensor, B_tensor],
+        )
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup(
+            {f"x{i}": table[f"x{i}"] for i in range(3)}
+        )
+
+        ConvTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("Y")
+        assert len(result) == 1  # 1 filter  1 output position
+        backend = ibis.duckdb.connect()
+        val = backend.execute(list(result.values())[0]).tolist()[0]
+        # kernel picks x0=1.0, bias=10  11.0
+        assert abs(val - 11.0) < 1e-6
+
+    def test_conv1d_multi_filter(self):
+        """Two filters, single channel: each filter is a different scalar."""
+        from orbital.translation.steps.conv import ConvTranslator
+
+        table = ibis.memtable({"x0": [2.0]})
+
+        # W shape [2, 1, 1]: filter0=3.0, filter1=-1.0
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [2, 1, 1], [3.0, -1.0])
+        B_tensor = helper.make_tensor("B", TensorProto.FLOAT, [2], [0.0, 0.0])
+        node = helper.make_node("Conv", inputs=["X", "W", "B"], outputs=["Y"])
+        node.attribute.extend([helper.make_attribute("kernel_shape", [1])])
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, 1, 1])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [None, 2, 1])],
+            [W_tensor, B_tensor],
+        )
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"]})
+
+        ConvTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("Y")
+        assert len(result) == 2  # 2 filters  1 position
+        backend = ibis.duckdb.connect()
+        vals = [backend.execute(v).tolist()[0] for v in result.values()]
+        assert abs(vals[0] - 6.0) < 1e-6   # 2.0 * 3.0
+        assert abs(vals[1] - (-2.0)) < 1e-6  # 2.0 * -1.0
+
+    def test_conv1d_rejects_2d_weights(self):
+        """Conv with 4-D weight tensor raises NotImplementedError."""
+        from orbital.translation.steps.conv import ConvTranslator
+
+        table = ibis.memtable({"x0": [1.0]})
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 1, 1, 1], [1.0])
+        node = helper.make_node("Conv", inputs=["X", "W"], outputs=["Y"])
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [None])],
+            [W_tensor],
+        )
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"]})
+
+        with pytest.raises(NotImplementedError, match="1-D convolutions"):
+            ConvTranslator(
+                table, graph.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: LSTMTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestLSTMTranslator:
+    """Tests for the ONNX LSTM translator (forward-direction unrolling)."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def _make_lstm_graph(self, I, H, T, W_data, R_data, B_data=None):
+        """Build a minimal ONNX LSTM graph with Y_h output."""
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 4 * H, I], W_data)
+        R_tensor = helper.make_tensor("R", TensorProto.FLOAT, [1, 4 * H, H], R_data)
+        inputs = ["X", "W", "R"]
+        inits = [W_tensor, R_tensor]
+        if B_data is not None:
+            B_tensor = helper.make_tensor("B", TensorProto.FLOAT, [1, 8 * H], B_data)
+            inputs.append("B")
+            inits.append(B_tensor)
+        node = helper.make_node(
+            "LSTM",
+            inputs=inputs,
+            outputs=["", "Y_h"],
+            hidden_size=H,
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, T * I])],
+            [helper.make_tensor_value_info("Y_h", TensorProto.FLOAT, [None, H])],
+            inits,
+        )
+        return graph
+
+    def test_lstm_registered(self):
+        from orbital.translation.steps.lstm import LSTMTranslator
+        assert TRANSLATORS.get("LSTM") is LSTMTranslator
+
+    def test_lstm_single_step_zero_weights(self):
+        """Single timestep, all-zero weights, no bias.
+
+        All gates  0.5 (sigmoid(0)) or 0.0 (tanh(0)).
+        i=0.5, f=0.5, c_bar=0.0, o=0.5  C=0.5*0.0, H=0.5*tanh(0)=0
+        """
+        from orbital.translation.steps.lstm import LSTMTranslator
+
+        I, H, T = 2, 2, 1
+        W_data = [0.0] * (4 * H * I)  # all zeros
+        R_data = [0.0] * (4 * H * H)
+
+        graph = self._make_lstm_graph(I, H, T, W_data, R_data)
+        table = ibis.memtable({"x0": [0.5], "x1": [-0.5]})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"], "x1": table["x1"]})
+
+        LSTMTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("Y_h")
+        assert isinstance(result, ValueVariablesGroup)
+        assert len(result) == H
+
+        backend = ibis.duckdb.connect()
+        vals = [backend.execute(v).tolist()[0] for v in result.values()]
+        for v in vals:
+            assert abs(v) < 1e-9  # H = 0.5 * tanh(0) = 0
+
+    def test_lstm_identity_forward(self):
+        """T=2 timesteps, identity-like weights, no bias, both outputs approx equal."""
+        from orbital.translation.steps.lstm import LSTMTranslator
+
+        I, H, T = 1, 1, 2
+        # W[gate, unit, input]: set only C-gate (gate 3 in IOFC order = index 3)
+        # to 1.0 so c_bar captures the input.
+        W_data = [0.0] * (4 * H * I)
+        W_data[3 * H * I] = 1.0   # W_c[0, 0] = 1.0
+
+        R_data = [0.0] * (4 * H * H)
+        # i-gate W = const 3 (large sigmoid  ~1.0), f-gate W = 0
+        W_data[0 * H * I] = 10.0  # W_i[0, 0]: large positive  i1
+
+        graph = self._make_lstm_graph(I, H, T, W_data, R_data)
+        table = ibis.memtable({"x0_t0": [1.0], "x0_t1": [0.0]})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup(
+            {"x0_t0": table["x0_t0"], "x0_t1": table["x0_t1"]}
+        )
+
+        LSTMTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("Y_h")
+        assert result is not None
+        assert len(result) == H
+
+    def test_lstm_rejects_bidirectional(self):
+        """Bidirectional LSTM raises NotImplementedError."""
+        from orbital.translation.steps.lstm import LSTMTranslator
+
+        I, H, T = 1, 1, 1
+        W_data = [0.0] * (4 * H * I)
+        R_data = [0.0] * (4 * H * H)
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 4 * H, I], W_data)
+        R_tensor = helper.make_tensor("R", TensorProto.FLOAT, [1, 4 * H, H], R_data)
+
+        node = helper.make_node(
+            "LSTM",
+            inputs=["X", "W", "R"],
+            outputs=["", "Y_h"],
+            hidden_size=H,
+            direction="bidirectional",
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, T * I])],
+            [helper.make_tensor_value_info("Y_h", TensorProto.FLOAT, [None, H])],
+            [W_tensor, R_tensor],
+        )
+        table = ibis.memtable({"x0": [1.0]})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"]})
+
+        with pytest.raises(NotImplementedError, match="direction"):
+            LSTMTranslator(
+                table, graph.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: GRUTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestGRUTranslator:
+    """Tests for the ONNX GRU translator (forward-direction unrolling)."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def _make_gru_graph(self, I, H, T, W_data, R_data, B_data=None):
+        """Build a minimal ONNX GRU graph with Y_h output."""
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 3 * H, I], W_data)
+        R_tensor = helper.make_tensor("R", TensorProto.FLOAT, [1, 3 * H, H], R_data)
+        inputs = ["X", "W", "R"]
+        inits = [W_tensor, R_tensor]
+        if B_data is not None:
+            B_tensor = helper.make_tensor("B", TensorProto.FLOAT, [1, 6 * H], B_data)
+            inputs.append("B")
+            inits.append(B_tensor)
+        node = helper.make_node(
+            "GRU",
+            inputs=inputs,
+            outputs=["", "Y_h"],
+            hidden_size=H,
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, T * I])],
+            [helper.make_tensor_value_info("Y_h", TensorProto.FLOAT, [None, H])],
+            inits,
+        )
+        return graph
+
+    def test_gru_registered(self):
+        from orbital.translation.steps.gru import GRUTranslator
+        assert TRANSLATORS.get("GRU") is GRUTranslator
+
+    def test_gru_single_step_zero_weights(self):
+        """All-zero weights: z0.5, r0.5, h=0  H=(1-0.5)*0+0.5*0=0."""
+        from orbital.translation.steps.gru import GRUTranslator
+
+        I, H, T = 2, 2, 1
+        W_data = [0.0] * (3 * H * I)
+        R_data = [0.0] * (3 * H * H)
+
+        graph = self._make_gru_graph(I, H, T, W_data, R_data)
+        table = ibis.memtable({"x0": [0.5], "x1": [-0.5]})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"], "x1": table["x1"]})
+
+        GRUTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("Y_h")
+        assert isinstance(result, ValueVariablesGroup)
+        assert len(result) == H
+
+        backend = ibis.duckdb.connect()
+        vals = [backend.execute(v).tolist()[0] for v in result.values()]
+        for v in vals:
+            assert abs(v) < 1e-9  # H_prev=0, z0.5, h=0  H=0.5*0+0.5*0=0
+
+    def test_gru_large_update_gate_preserves_state(self):
+        """With very large positive z-gate, H_t  H_{t-1}: state is preserved."""
+        from orbital.translation.steps.gru import GRUTranslator
+
+        I, H, T = 1, 1, 1
+        # W_z large positive: z  1  H_t  H_prev (but H_prev=0 at t=0)
+        # With H_prev=0, H_t = (1-z)*h + z*0 = (1-z)*h
+        # If z1 then H_t  0 regardless
+        W_data = [0.0] * (3 * H * I)
+        W_data[0] = 100.0  # W_z large  z1
+        R_data = [0.0] * (3 * H * H)
+
+        graph = self._make_gru_graph(I, H, T, W_data, R_data)
+        table = ibis.memtable({"x0": [1.0]})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"]})
+
+        GRUTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("Y_h")
+        assert result is not None
+        backend = ibis.duckdb.connect()
+        val = backend.execute(list(result.values())[0]).tolist()[0]
+        assert abs(val) < 1e-6  # z1, H_prev=0  H0
+
+    def test_gru_multi_step_output_is_group(self):
+        """Two timesteps: output should still be H-length ValueVariablesGroup."""
+        from orbital.translation.steps.gru import GRUTranslator
+
+        I, H, T = 2, 3, 2
+        W_data = [0.0] * (3 * H * I)
+        R_data = [0.0] * (3 * H * H)
+
+        graph = self._make_gru_graph(I, H, T, W_data, R_data)
+        table = ibis.memtable(
+            {"x0": [1.0], "x1": [2.0], "x2": [3.0], "x3": [4.0]}
+        )
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup(
+            {"x0": table["x0"], "x1": table["x1"], "x2": table["x2"], "x3": table["x3"]}
+        )
+
+        GRUTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("Y_h")
+        assert isinstance(result, ValueVariablesGroup)
+        assert len(result) == H
+
+    def test_gru_rejects_bidirectional(self):
+        """Bidirectional GRU raises NotImplementedError."""
+        from orbital.translation.steps.gru import GRUTranslator
+
+        I, H, T = 1, 1, 1
+        W_data = [0.0] * (3 * H * I)
+        R_data = [0.0] * (3 * H * H)
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 3 * H, I], W_data)
+        R_tensor = helper.make_tensor("R", TensorProto.FLOAT, [1, 3 * H, H], R_data)
+
+        node = helper.make_node(
+            "GRU",
+            inputs=["X", "W", "R"],
+            outputs=["", "Y_h"],
+            hidden_size=H,
+            direction="bidirectional",
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, T * I])],
+            [helper.make_tensor_value_info("Y_h", TensorProto.FLOAT, [None, H])],
+            [W_tensor, R_tensor],
+        )
+        table = ibis.memtable({"x0": [1.0]})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"]})
+
+        with pytest.raises(NotImplementedError, match="direction"):
+            GRUTranslator(
+                table, graph.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()

@@ -16,6 +16,9 @@ from .translation.steps.avgpool import AveragePoolTranslator
 from .translation.steps.batchnorm import BatchNormalizationTranslator
 from .translation.steps.cast import CastLikeTranslator, CastTranslator
 from .translation.steps.celu import CeluTranslator
+from .translation.steps.conv import ConvTranslator
+from .translation.steps.gru import GRUTranslator
+from .translation.steps.lstm import LSTMTranslator
 from .translation.steps.clip import ClipTranslator
 from .translation.steps.concat import ConcatTranslator, FeatureVectorizerTranslator
 from .translation.steps.div import DivTranslator
@@ -93,6 +96,9 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Celu": CeluTranslator,
     "Clip": ClipTranslator,
     "Concat": ConcatTranslator,
+    "Conv": ConvTranslator,
+    "GRU": GRUTranslator,
+    "LSTM": LSTMTranslator,
     "Dropout": DropoutTranslator,
     "Elu": EluTranslator,
     "Erf": ErfTranslator,
