@@ -17,6 +17,7 @@ from .translation.steps.batchnorm import BatchNormalizationTranslator
 from .translation.steps.cast import CastLikeTranslator, CastTranslator
 from .translation.steps.celu import CeluTranslator
 from .translation.steps.conv import ConvTranslator
+from .translation.steps.convtranspose import ConvTransposeTranslator
 from .translation.steps.gru import GRUTranslator
 from .translation.steps.lstm import LSTMTranslator
 from .translation.steps.clip import ClipTranslator
@@ -98,6 +99,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Clip": ClipTranslator,
     "Concat": ConcatTranslator,
     "Conv": ConvTranslator,
+    "ConvTranspose": ConvTransposeTranslator,
     "GRU": GRUTranslator,
     "LSTM": LSTMTranslator,
     "Dropout": DropoutTranslator,

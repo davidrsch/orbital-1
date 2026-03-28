@@ -3,20 +3,23 @@
 For the SQL/tabular context, MaxPool is supported when:
 
 - ``kernel_shape`` has all dimensions equal to 1 (pass-through), or
-- The input is a ``VariablesGroup`` of *L* columns and ``kernel_shape = [L]``
-  (global 1-D max pool, returning the per-row max across all L columns).
+- The input is a ``VariablesGroup`` of *L* columns and a 1-D
+  ``kernel_shape = [k]``; covers both global max (k == L) and sliding-window
+  (k < L) cases.  The input is treated as a single-channel sequence of length L.
 
-Other shapes raise ``NotImplementedError``.
+Other shapes (2-D, 3-D, or dilated) raise ``NotImplementedError``.
 
 References
 ----------
 https://onnx.ai/onnx/operators/onnx__MaxPool.html
 """
 
+import math
+
 import ibis
 
 from ..translator import Translator
-from ..variables import NumericVariablesGroup, VariablesGroup
+from ..variables import NumericVariablesGroup, ValueVariablesGroup, VariablesGroup
 
 
 class MaxPoolTranslator(Translator):
@@ -38,20 +41,75 @@ class MaxPoolTranslator(Translator):
                 "single-column input."
             )
 
+        if len(kernel_shape) != 1:
+            raise NotImplementedError(
+                f"MaxPool: only 1-D pooling (one kernel_shape value) is supported;"
+                f" got kernel_shape={kernel_shape}."
+            )
+
         data = NumericVariablesGroup(data)
         cols = list(data.values())
         n = len(cols)
+        k = kernel_shape[0]
 
-        # Global max pool: kernel covers all columns.
-        if len(kernel_shape) == 1 and kernel_shape[0] == n:
-            result: ibis.expr.types.NumericValue = cols[0]
-            for col in cols[1:]:
-                result = ibis.greatest(result, col)
-            self.set_output(self._optimizer.fold_operation(result))
-            return
+        dilations: list[int] = list(self._attributes.get("dilations", [1]))
+        if any(d != 1 for d in dilations):
+            raise NotImplementedError(
+                f"MaxPool: dilations={dilations} is not supported; only dilation=1."
+            )
 
-        raise NotImplementedError(
-            f"MaxPool: kernel_shape={kernel_shape} with {n} input column(s) is "
-            "not supported in the SQL context.  Only kernel_shape=[1] (identity) "
-            "or kernel_shape=[n_cols] (global max) are supported."
-        )
+        auto_pad = str(self._attributes.get("auto_pad", "NOTSET"))
+        pads: list[int] = list(self._attributes.get("pads", [0, 0]))
+        strides: list[int] = list(self._attributes.get("strides", [k]))
+        ceil_mode: int = int(self._attributes.get("ceil_mode", 0))
+
+        stride = int(strides[0]) if strides else k
+
+        if auto_pad == "VALID":
+            pad_l, pad_r = 0, 0
+        elif auto_pad == "NOTSET":
+            pad_l = int(pads[0]) if pads else 0
+            pad_r = int(pads[1]) if len(pads) > 1 else 0
+        elif auto_pad in ("SAME_UPPER", "SAME_LOWER"):
+            l_out_nom = (n + stride - 1) // stride
+            total_pad = max(0, (l_out_nom - 1) * stride + k - n)
+            if auto_pad == "SAME_UPPER":
+                pad_l, pad_r = total_pad // 2, total_pad - total_pad // 2
+            else:
+                pad_r, pad_l = total_pad // 2, total_pad - total_pad // 2
+        else:
+            raise NotImplementedError(
+                f"MaxPool: auto_pad='{auto_pad}' is not supported."
+            )
+
+        padded = n + pad_l + pad_r
+        if ceil_mode:
+            l_out = math.ceil((padded - k) / stride) + 1
+        else:
+            l_out = (padded - k) // stride + 1
+
+        if l_out <= 0:
+            raise ValueError(
+                f"MaxPool: computed output length {l_out} is non-positive for "
+                f"L_in={n}, kernel={k}, stride={stride}, pads=[{pad_l},{pad_r}]."
+            )
+
+        # For padding positions, we treat -inf as identity for max — we simply
+        # exclude padded positions (MaxPool ONNX spec: padding does not contribute).
+        results: dict[str, ibis.expr.types.Value] = {}
+        for p in range(l_out):
+            valid: list[ibis.expr.types.NumericValue] = []
+            for kk in range(k):
+                pos = p * stride + kk - pad_l
+                if 0 <= pos < n:
+                    valid.append(cols[pos])
+            if not valid:
+                # Fully padded window — undefined per spec; emit NULL-safe placeholder.
+                results[f"out_0_{p}"] = ibis.literal(float("-inf"))
+                continue
+            result: ibis.expr.types.NumericValue = valid[0]
+            for v in valid[1:]:
+                result = ibis.greatest(result, v)
+            results[f"out_0_{p}"] = self._optimizer.fold_operation(result)
+
+        self.set_output(ValueVariablesGroup(results))
