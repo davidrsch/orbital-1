@@ -27,6 +27,7 @@ class ConvTranslator(Translator):
         """Translate the Conv node, writing the result to the graph."""
         # https://onnx.ai/onnx/operators/onnx__Conv.html
         group = int(self._attributes.get("group", 1))
+        auto_pad = str(self._attributes.get("auto_pad", "NOTSET"))
         dilations = self._attributes.get("dilations", [1])
         pads = self._attributes.get("pads", [0, 0])
         strides = self._attributes.get("strides", [1])
@@ -60,8 +61,18 @@ class ConvTranslator(Translator):
 
         dil = int(dilations[0]) if dilations else 1
         stride = int(strides[0]) if strides else 1
-        pad_l = int(pads[0]) if pads else 0
-        pad_r = int(pads[1]) if len(pads) > 1 else 0
+
+        # Compute explicit padding (may be overridden below for SAME auto_pad).
+        if auto_pad == "VALID":
+            pad_l, pad_r = 0, 0
+        elif auto_pad == "NOTSET":
+            pad_l = int(pads[0]) if pads else 0
+            pad_r = int(pads[1]) if len(pads) > 1 else 0
+        elif auto_pad in ("SAME_UPPER", "SAME_LOWER"):
+            # Defer: pad_l/pad_r will be computed once w_in is known.
+            pad_l, pad_r = 0, 0  # placeholder
+        else:
+            raise NotImplementedError(f"Conv: auto_pad='{auto_pad}' is not supported.")
 
         # ── Consume input ─────────────────────────────────────────────────
         input_val = self._variables.consume(self.inputs[0])
@@ -83,6 +94,18 @@ class ConvTranslator(Translator):
 
         # effective kernel width considering dilation
         k_eff = dil * (k_w - 1) + 1
+
+        # Resolve SAME auto_pad now that w_in and k_eff are known.
+        if auto_pad in ("SAME_UPPER", "SAME_LOWER"):
+            w_out_nominal = (w_in + stride - 1) // stride
+            total_pad = max(0, (w_out_nominal - 1) * stride + k_eff - w_in)
+            if auto_pad == "SAME_UPPER":
+                # extra padding goes to the right
+                pad_l = total_pad // 2
+                pad_r = total_pad - pad_l
+            else:  # SAME_LOWER — extra padding goes to the left
+                pad_r = total_pad // 2
+                pad_l = total_pad - pad_r
         w_out = (w_in + pad_l + pad_r - k_eff) // stride + 1
         if w_out <= 0:
             raise ValueError(

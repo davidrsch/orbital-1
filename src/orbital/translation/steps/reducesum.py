@@ -37,6 +37,14 @@ class ReduceSumTranslator(Translator):
                 f"ReduceSum: only axis=-1 or axis=1 (feature axis) is supported, got {axes}"
             )
 
+        keepdims = int(self._attributes.get("keepdims", 1))
+        noop_with_empty_axes = int(self._attributes.get("noop_with_empty_axes", 0))
+
+        # opset 18+: when axes input is empty and noop_with_empty_axes=1, pass through.
+        if noop_with_empty_axes == 1 and (axes is None or len(axes) == 0):
+            self.set_output(data)
+            return
+
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
             cols = list(data.values())
@@ -47,7 +55,12 @@ class ReduceSumTranslator(Translator):
             sum_expr: ibis.expr.types.NumericValue = cols[0]
             for col in cols[1:]:
                 sum_expr = sum_expr + col
-            self.set_output(self._optimizer.fold_operation(sum_expr))
+            result = self._optimizer.fold_operation(sum_expr)
+            if keepdims == 1:
+                from ..variables import ValueVariablesGroup
+                self.set_output(ValueVariablesGroup({"out_0": result}))
+            else:
+                self.set_output(result)
         else:
             # Single column: sum is itself.
             self.set_output(data)

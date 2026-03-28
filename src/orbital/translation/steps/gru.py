@@ -93,6 +93,19 @@ class GRUTranslator(Translator):
             if b_val is not None and isinstance(b_val, (list, tuple)):
                 b_flat = list(b_val)
 
+        # ── Sequence length and initial state guards ──────────────────────
+        # ONNX GRU inputs: [X, W, R, B, sequence_lens, initial_h]
+        if len(self.inputs) > 4 and bool(self.inputs[4]):
+            raise NotImplementedError(
+                "GRU: sequence_lens (input[4]) is not supported; "
+                "all sequences must have the same fixed length T."
+            )
+        if len(self.inputs) > 5 and bool(self.inputs[5]):
+            raise NotImplementedError(
+                "GRU: non-zero initial_h (input[5]) is not supported; "
+                "the initial hidden state is assumed to be all-zeros."
+            )
+
         # ── Consume X input ───────────────────────────────────────────────
         x_val = self._variables.consume(self.inputs[0])
         if isinstance(x_val, VariablesGroup):

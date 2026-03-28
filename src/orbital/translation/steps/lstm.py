@@ -89,8 +89,28 @@ class LSTMTranslator(Translator):
                 b_flat = list(b_val)
 
         # ── Peephole connections not supported ────────────────────────────
-        if len(self.inputs) > 4 and bool(self.inputs[4]):
+        # ONNX LSTM inputs: [X, W, R, B, sequence_lens, initial_h, initial_c, P]
+        # P (peephole) is at index 7, NOT index 4 (sequence_lens).
+        if len(self.inputs) > 7 and bool(self.inputs[7]):
             raise NotImplementedError("LSTM: peephole connections (P input) are not supported.")
+
+        # ── Sequence length and initial state guards ──────────────────────
+        # ONNX LSTM inputs: [X, W, R, B, sequence_lens, initial_h, initial_c, P]
+        if len(self.inputs) > 4 and bool(self.inputs[4]):
+            raise NotImplementedError(
+                "LSTM: sequence_lens (input[4]) is not supported; "
+                "all sequences must have the same fixed length T."
+            )
+        if len(self.inputs) > 5 and bool(self.inputs[5]):
+            raise NotImplementedError(
+                "LSTM: non-zero initial_h (input[5]) is not supported; "
+                "the initial hidden state is assumed to be all-zeros."
+            )
+        if len(self.inputs) > 6 and bool(self.inputs[6]):
+            raise NotImplementedError(
+                "LSTM: non-zero initial_c (input[6]) is not supported; "
+                "the initial cell state is assumed to be all-zeros."
+            )
 
         # ── Consume X input ───────────────────────────────────────────────
         x_val = self._variables.consume(self.inputs[0])

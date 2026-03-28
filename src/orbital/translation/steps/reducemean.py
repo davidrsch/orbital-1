@@ -3,7 +3,7 @@
 import ibis
 
 from ..translator import Translator
-from ..variables import NumericVariablesGroup, VariablesGroup
+from ..variables import NumericVariablesGroup, ValueVariablesGroup, VariablesGroup
 
 
 class ReduceMeanTranslator(Translator):
@@ -14,6 +14,7 @@ class ReduceMeanTranslator(Translator):
         # https://onnx.ai/onnx/operators/onnx__ReduceMean.html
         # Only axis=-1 / axis=1 (reduce over the feature dimension) is supported.
         data = self._variables.consume(self.inputs[0])
+        keepdims = int(self._attributes.get("keepdims", 1))
 
         # Axes can be an attribute (opset < 18) or a second input (opset >= 18).
         axes = self._attributes.get("axes", None)
@@ -42,7 +43,11 @@ class ReduceMeanTranslator(Translator):
             for col in cols[1:]:
                 mean_expr = mean_expr + col
             mean_expr = mean_expr / ibis.literal(float(n))
-            self.set_output(self._optimizer.fold_operation(mean_expr))
+            result = self._optimizer.fold_operation(mean_expr)
+            if keepdims == 1:
+                self.set_output(ValueVariablesGroup({"out_0": result}))
+            else:
+                self.set_output(result)
         else:
             # Single column: mean of a scalar column is itself.
             self.set_output(data)

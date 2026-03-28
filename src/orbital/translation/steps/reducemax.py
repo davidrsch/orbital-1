@@ -37,6 +37,8 @@ class ReduceMaxTranslator(Translator):
                 f"ReduceMax: only axis=-1 or axis=1 (feature axis) is supported, got {axes}"
             )
 
+        keepdims = int(self._attributes.get("keepdims", 1))
+
         if isinstance(data, VariablesGroup):
             data = NumericVariablesGroup(data)
             cols = list(data.values())
@@ -44,10 +46,15 @@ class ReduceMaxTranslator(Translator):
                 raise ValueError(
                     "ReduceMax: input group must have at least one column."
                 )
-            result: ibis.expr.types.NumericValue = cols[0]
+            max_expr: ibis.expr.types.NumericValue = cols[0]
             for col in cols[1:]:
-                result = ibis.greatest(result, col)
-            self.set_output(self._optimizer.fold_operation(result))
+                max_expr = ibis.greatest(max_expr, col)
+            result = self._optimizer.fold_operation(max_expr)
+            if keepdims == 1:
+                from ..variables import ValueVariablesGroup
+                self.set_output(ValueVariablesGroup({"out_0": result}))
+            else:
+                self.set_output(result)
         else:
             # Single column: max of one element is itself.
             self.set_output(data)

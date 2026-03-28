@@ -655,7 +655,7 @@ class TestRMSNormalizationTranslator:
     def test_rmsnorm_unit_scale(self):
         """RMSNorm with unit scale: y_c = x_c / rms(x)."""
         # rms([3, 4]) = sqrt((9+16)/2) = sqrt(12.5)
-        table = ibis.memtable({"h0": [3.0], "h1": [4.0]})
+        table = ibis.memtable({"input": [0.0], "h0": [3.0], "h1": [4.0]})
         scale = np.array([1.0, 1.0], dtype=np.float32)
         scale_tensor = helper.make_tensor("scale", TensorProto.FLOAT, [2], scale)
         node = helper.make_node("RMSNormalization", ["input", "scale"], ["output"],
@@ -686,7 +686,7 @@ class TestRMSNormalizationTranslator:
     def test_rmsnorm_with_scale(self):
         """RMSNorm scales output by gamma per feature."""
         # rms([1, 1]) = 1.0; after scale=[2,3]: y = [2.0, 3.0]
-        table = ibis.memtable({"h0": [1.0], "h1": [1.0]})
+        table = ibis.memtable({"input": [0.0], "h0": [1.0], "h1": [1.0]})
         scale = np.array([2.0, 3.0], dtype=np.float32)
         scale_tensor = helper.make_tensor("scale", TensorProto.FLOAT, [2], scale)
         node = helper.make_node("RMSNormalization", ["input", "scale"], ["output"],

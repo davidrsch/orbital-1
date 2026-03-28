@@ -44,10 +44,16 @@ class ReduceMinTranslator(Translator):
                 raise ValueError(
                     "ReduceMin: input group must have at least one column."
                 )
-            result: ibis.expr.types.NumericValue = cols[0]
+            keepdims = int(self._attributes.get("keepdims", 1))
+            min_expr: ibis.expr.types.NumericValue = cols[0]
             for col in cols[1:]:
-                result = ibis.least(result, col)
-            self.set_output(self._optimizer.fold_operation(result))
+                min_expr = ibis.least(min_expr, col)
+            result = self._optimizer.fold_operation(min_expr)
+            if keepdims == 1:
+                from ..variables import ValueVariablesGroup
+                self.set_output(ValueVariablesGroup({"out_0": result}))
+            else:
+                self.set_output(result)
         else:
             # Single column: min of one element is itself.
             self.set_output(data)

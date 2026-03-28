@@ -33,9 +33,14 @@ class GemmTranslator(Translator):
         if b_flat is None or not isinstance(b_flat, (list, tuple)):
             raise ValueError("Gemm: B must be a constant list.")
 
-        c_flat = self._variables.get_initializer_value(self.inputs[2])
-        if c_flat is None or not isinstance(c_flat, (list, tuple)):
-            raise ValueError("Gemm: C (bias) must be a constant list.")
+        # C (bias) is optional per the ONNX spec.
+        if len(self.inputs) < 3 or not self.inputs[2]:
+            c_flat: list = [0.0]
+        else:
+            c_flat_val = self._variables.get_initializer_value(self.inputs[2])
+            if c_flat_val is None or not isinstance(c_flat_val, (list, tuple)):
+                raise ValueError("Gemm: C (bias) must be a constant list.")
+            c_flat = list(c_flat_val)
 
         # Determine effective weight shape (input_dim, output_dim)
         if trans_b == 1:

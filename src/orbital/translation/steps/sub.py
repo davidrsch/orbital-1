@@ -25,7 +25,8 @@ class SubTranslator(Translator):
     def process(self) -> None:
         """Performs the translation and set the output variable."""
         # https://onnx.ai/onnx/operators/onnx__Sub.html
-        assert len(self._inputs) == 2, "The Sub node must have exactly 2 inputs."
+        if len(self._inputs) != 2:
+            raise ValueError(f"Sub: expected exactly 2 inputs, got {len(self._inputs)}.")
 
         first_raw = self._variables.consume(self._inputs[0])
         second_raw = self._variables.consume(self._inputs[1])
@@ -44,9 +45,11 @@ class SubTranslator(Translator):
             if isinstance(first_operand, VariablesGroup):
                 first_operand = NumericVariablesGroup(first_operand)
                 struct_fields = list(first_operand.keys())
-                assert len(sub_values) == len(struct_fields), (
-                    f"The number of values in the initializer ({len(sub_values)}) must match the number of fields ({len(struct_fields)})"
-                )
+                if len(sub_values) != len(struct_fields):
+                    raise ValueError(
+                        f"Sub: initializer has {len(sub_values)} values but "
+                        f"the variable group has {len(struct_fields)} fields."
+                    )
                 self.set_output(
                     ValueVariablesGroup(
                         {

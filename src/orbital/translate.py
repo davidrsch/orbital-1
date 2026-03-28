@@ -27,6 +27,7 @@ from .translation.steps.elu import EluTranslator
 from .translation.steps.erf import ErfTranslator
 from .translation.steps.exp import ExpTranslator
 from .translation.steps.flatten import FlattenTranslator
+from .translation.steps.log import LogTranslator
 from .translation.steps.gather import GatherTranslator
 from .translation.steps.gelu import GeluTranslator
 from .translation.steps.gemm import GemmTranslator
@@ -103,6 +104,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Elu": EluTranslator,
     "Erf": ErfTranslator,
     "Exp": ExpTranslator,
+    "Log": LogTranslator,
     "FeatureVectorizer": FeatureVectorizerTranslator,
     "Gelu": GeluTranslator,
     "GlobalAveragePool": GlobalAveragePoolTranslator,
