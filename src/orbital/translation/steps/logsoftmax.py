@@ -48,7 +48,7 @@ class LogSoftmaxTranslator(Translator):
 
             # log(∑ exp(x_j − max_x))
             sum_exp = functools.reduce(operator.add, shifted_exps)
-            log_sum = sum_exp.log()
+            log_sum = sum_exp.ln()
 
             # log_softmax(x_i) = (x_i − max_x) − log_sum
             result = {k: (v - max_x) - log_sum for k, v in zip(data.keys(), values)}

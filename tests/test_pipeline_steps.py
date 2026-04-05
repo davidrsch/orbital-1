@@ -5470,7 +5470,7 @@ class TestGeluTranslator:
         assert isinstance(result, NumericVariablesGroup)
 
 
-class TestPreluTranslator:
+class TestPReluTranslator:
     """Tests for PreluTranslator."""
 
     optimizer = Optimizer(enabled=False)
