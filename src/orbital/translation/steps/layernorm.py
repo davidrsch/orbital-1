@@ -49,6 +49,13 @@ class LayerNormalizationTranslator(Translator):
         cols = list(data.values())
         n = len(cols)
 
+        axis = int(self._attributes.get("axis", -1))
+        if axis not in (-1, n - 1):
+            raise NotImplementedError(
+                f"LayerNormalization: only last-axis normalisation (axis=-1) is "
+                f"supported; got axis={axis} with {n} features."
+            )
+
         if len(scale) != n:
             raise ValueError(
                 f"LayerNormalization: scale length ({len(scale)}) "

@@ -51,6 +51,9 @@ from .translation.steps.logsoftmax import LogSoftmaxTranslator
 from .translation.steps.matmul import MatMulTranslator
 from .translation.steps.maxpool import MaxPoolTranslator
 from .translation.steps.mish import MishTranslator
+from .translation.steps.mod import ModTranslator
+from .translation.steps.meanvariancenorm import MeanVarianceNormalizationTranslator
+from .translation.steps.multiheadattention import MultiHeadAttentionTranslator
 from .translation.steps.mul import MulTranslator
 from .translation.steps.neg import NegTranslator
 from .translation.steps.onehotencoder import OneHotEncoderTranslator
@@ -60,10 +63,20 @@ from .translation.steps.reducemax import ReduceMaxTranslator
 from .translation.steps.reducemean import ReduceMeanTranslator
 from .translation.steps.reducemin import ReduceMinTranslator
 from .translation.steps.reducesum import ReduceSumTranslator
+from .translation.steps.reducel1 import ReduceL1Translator
+from .translation.steps.reducel2 import ReduceL2Translator
+from .translation.steps.reducelogsum import ReduceLogSumTranslator
+from .translation.steps.reducesumsquare import ReduceSumSquareTranslator
 from .translation.steps.relu import ReluTranslator
 from .translation.steps.reshape import ReshapeTranslator
 from .translation.steps.rmsnorm import RMSNormalizationTranslator
+from .translation.steps.rnn import RNNTranslator
 from .translation.steps.scaler import ScalerTranslator
+from .translation.steps.sign import SignTranslator
+from .translation.steps.shrink import ShrinkTranslator
+from .translation.steps.scatterelements import ScatterElementsTranslator
+from .translation.steps.shape import ShapeTranslator
+from .translation.steps.split import SplitTranslator
 from .translation.steps.selu import SeluTranslator
 from .translation.steps.sigmoid import SigmoidTranslator
 from .translation.steps.softmax import SoftmaxTranslator
@@ -125,13 +138,26 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Div": DivTranslator,
     "Mul": MulTranslator,
     "Mish": MishTranslator,
+    "Mod": ModTranslator,
+    "MeanVarianceNormalization": MeanVarianceNormalizationTranslator,
+    "MultiHeadAttention": MultiHeadAttentionTranslator,
     "Neg": NegTranslator,
     "Pow": PowTranslator,
     "PRelu": PreluTranslator,
+    "ReduceL1": ReduceL1Translator,
+    "ReduceL2": ReduceL2Translator,
+    "ReduceLogSum": ReduceLogSumTranslator,
+    "ReduceSumSquare": ReduceSumSquareTranslator,
     "ReduceMax": ReduceMaxTranslator,
     "ReduceMean": ReduceMeanTranslator,
     "ReduceMin": ReduceMinTranslator,
     "ReduceSum": ReduceSumTranslator,
+    "RNN": RNNTranslator,
+    "Sign": SignTranslator,
+    "Shrink": ShrinkTranslator,
+    "ScatterElements": ScatterElementsTranslator,
+    "Shape": ShapeTranslator,
+    "Split": SplitTranslator,
     "Flatten": FlattenTranslator,
     "LogSoftmax": LogSoftmaxTranslator,
     "MaxPool": MaxPoolTranslator,

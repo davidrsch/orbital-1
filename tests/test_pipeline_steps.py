@@ -5580,6 +5580,31 @@ class TestLayerNormalizationTranslator:
         assert abs(a_val - ((-1.0 / std) * 2.0 + 1.0)) < 1e-5
         assert abs(b_val - ((1.0 / std) * 2.0 + 1.0)) < 1e-5
 
+    def test_layernorm_non_last_axis_raises(self):
+        """LayerNorm with axis=0 (non-last) should raise NotImplementedError."""
+        table = ibis.memtable({"a": [2.0], "b": [4.0]})
+        scale_tensor = helper.make_tensor("scale", TensorProto.FLOAT, [2], [1.0, 1.0])
+        bias_tensor = helper.make_tensor("bias", TensorProto.FLOAT, [2], [0.0, 0.0])
+        node = helper.make_node(
+            "LayerNormalization",
+            inputs=["x", "scale", "bias"],
+            outputs=["output"],
+            axis=0,
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None, 2])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, 2])],
+            [scale_tensor, bias_tensor],
+        )
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.layernorm import LayerNormalizationTranslator
+        with pytest.raises(NotImplementedError, match="axis"):
+            LayerNormalizationTranslator(
+                table, graph.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()
+
 
 class TestReduceMaxTranslator:
     """Tests for ReduceMaxTranslator."""
@@ -7193,6 +7218,30 @@ class TestRMSNormalizationTranslator:
         assert abs(a_val - 1.0 / rms * 2.0) < 1e-6
         assert abs(b_val - 1.0 / rms * 3.0) < 1e-6
 
+    def test_rmsnorm_non_last_axis_raises(self):
+        """RMSNorm with axis=0 (non-last) should raise NotImplementedError."""
+        table = ibis.memtable({"a": [2.0], "b": [4.0]})
+        scale_tensor = helper.make_tensor("scale", TensorProto.FLOAT, [2], [1.0, 1.0])
+        node = helper.make_node(
+            "RMSNormalization",
+            inputs=["x", "scale"],
+            outputs=["output"],
+            axis=0,
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None, 2])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, 2])],
+            [scale_tensor],
+        )
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.rmsnorm import RMSNormalizationTranslator
+        with pytest.raises(NotImplementedError, match="axis"):
+            RMSNormalizationTranslator(
+                table, graph.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: LogTranslator
@@ -7252,3 +7301,820 @@ class TestLogTranslator:
             assert abs(got - math.log(raw)) < 1e-9
         for got, raw in zip(b_vals, [math.e ** 2, math.e ** 3]):
             assert abs(got - math.log(raw)) < 1e-9
+
+
+class TestSignTranslator:
+    """Tests for SignTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_sign_registered(self):
+        from orbital.translation.steps.sign import SignTranslator
+        assert TRANSLATORS.get("Sign") is SignTranslator
+
+    def test_sign_single_column(self):
+        table = ibis.memtable({"x": [-5.0, 0.0, 3.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = Sign(x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.sign import SignTranslator
+        SignTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        backend = ibis.duckdb.connect()
+        assert list(backend.execute(variables.peek_variable("output"))) == [-1.0, 0.0, 1.0]
+
+    def test_sign_group(self):
+        table = ibis.memtable({"a": [-2.0, 0.0], "b": [4.0, -1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = Sign(x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.sign import SignTranslator
+        SignTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("output")
+        assert isinstance(result, NumericVariablesGroup)
+        backend = ibis.duckdb.connect()
+        assert list(backend.execute(result["a"])) == [-1.0, 0.0]
+        assert list(backend.execute(result["b"])) == [1.0, -1.0]
+
+
+class TestReduceL1Translator:
+    """Tests for ReduceL1Translator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_reducel1_registered(self):
+        from orbital.translation.steps.reducel1 import ReduceL1Translator
+        assert TRANSLATORS.get("ReduceL1") is ReduceL1Translator
+
+    def test_reducel1_group(self):
+        """ReduceL1 across columns returns per-row sum of absolute values (keepdims=0)."""
+        table = ibis.memtable({"a": [-3.0, 1.0], "b": [4.0, -2.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceL1 <axes: ints = [-1], keepdims: int = 0> (x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.reducel1 import ReduceL1Translator
+        ReduceL1Translator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        backend = ibis.duckdb.connect()
+        assert list(backend.execute(variables.peek_variable("output"))) == [7.0, 3.0]
+
+    def test_reducel1_single_column(self):
+        table = ibis.memtable({"x": [-4.0, 2.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceL1 <axes: ints = [-1], keepdims: int = 0> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.reducel1 import ReduceL1Translator
+        ReduceL1Translator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        backend = ibis.duckdb.connect()
+        assert list(backend.execute(variables.peek_variable("output"))) == [4.0, 2.0]
+
+    def test_reducel1_unsupported_axis_raises(self):
+        table = ibis.memtable({"x": [1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceL1 <axes: ints = [0]> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.reducel1 import ReduceL1Translator
+        t = ReduceL1Translator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        with pytest.raises(NotImplementedError, match="axis"):
+            t.process()
+
+
+class TestReduceL2Translator:
+    """Tests for ReduceL2Translator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_reducel2_registered(self):
+        from orbital.translation.steps.reducel2 import ReduceL2Translator
+        assert TRANSLATORS.get("ReduceL2") is ReduceL2Translator
+
+    def test_reducel2_group(self):
+        """ReduceL2 across columns returns per-row sqrt(sum of squares) (keepdims=0)."""
+        table = ibis.memtable({"a": [3.0, 0.0], "b": [4.0, 5.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceL2 <axes: ints = [-1], keepdims: int = 0> (x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.reducel2 import ReduceL2Translator
+        ReduceL2Translator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        assert abs(result[0] - 5.0) < 1e-9   # sqrt(9+16)
+        assert abs(result[1] - 5.0) < 1e-9   # sqrt(0+25)
+
+    def test_reducel2_single_column(self):
+        table = ibis.memtable({"x": [-3.0, 4.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceL2 <axes: ints = [-1], keepdims: int = 0> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.reducel2 import ReduceL2Translator
+        ReduceL2Translator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        assert abs(result[0] - 3.0) < 1e-9
+        assert abs(result[1] - 4.0) < 1e-9
+
+    def test_reducel2_unsupported_axis_raises(self):
+        table = ibis.memtable({"x": [1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceL2 <axes: ints = [0]> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.reducel2 import ReduceL2Translator
+        t = ReduceL2Translator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        with pytest.raises(NotImplementedError, match="axis"):
+            t.process()
+
+
+class TestSplitTranslator:
+    """Tests for SplitTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_split_registered(self):
+        from orbital.translation.steps.split import SplitTranslator
+        assert TRANSLATORS.get("Split") is SplitTranslator
+
+    def test_split_equal(self):
+        """Split a 4-column group equally into two 2-column outputs."""
+        table = ibis.memtable({"a": [1.0], "b": [2.0], "c": [3.0], "d": [4.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] y0, float[N] y1) {
+                y0, y1 = Split <axis: int = 1> (x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = ValueVariablesGroup(
+            {"a": table["a"], "b": table["b"], "c": table["c"], "d": table["d"]}
+        )
+        from orbital.translation.steps.split import SplitTranslator
+        SplitTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        backend = ibis.duckdb.connect()
+        y0 = variables.peek_variable("y0")
+        y1 = variables.peek_variable("y1")
+        assert isinstance(y0, ValueVariablesGroup)
+        assert isinstance(y1, ValueVariablesGroup)
+        assert len(y0) == 2
+        assert len(y1) == 2
+        assert list(backend.execute(list(y0.values())[0])) == [1.0]
+        assert list(backend.execute(list(y1.values())[0])) == [3.0]
+
+    def test_split_unequal_axis_raises(self):
+        """Split on batch axis (0) should raise NotImplementedError."""
+        table = ibis.memtable({"x": [1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] y0) {
+                y0 = Split <axis: int = 0> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.split import SplitTranslator
+        t = SplitTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        with pytest.raises(NotImplementedError, match="axis"):
+            t.process()
+
+
+class TestRNNTranslator:
+    """Tests for the ONNX RNN translator (forward-direction unrolling)."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def _make_rnn_graph(self, I, H, T, W_data, R_data, B_data=None):
+        """Build a minimal ONNX RNN graph with Y_h output."""
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, H, I], W_data)
+        R_tensor = helper.make_tensor("R", TensorProto.FLOAT, [1, H, H], R_data)
+        inputs = ["X", "W", "R"]
+        inits = [W_tensor, R_tensor]
+        if B_data is not None:
+            B_tensor = helper.make_tensor("B", TensorProto.FLOAT, [1, 2 * H], B_data)
+            inputs.append("B")
+            inits.append(B_tensor)
+        node = helper.make_node(
+            "RNN",
+            inputs=inputs,
+            outputs=["", "Y_h"],
+            hidden_size=H,
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, T * I])],
+            [helper.make_tensor_value_info("Y_h", TensorProto.FLOAT, [None, H])],
+            inits,
+        )
+        return graph
+
+    def test_rnn_registered(self):
+        from orbital.translation.steps.rnn import RNNTranslator
+        assert TRANSLATORS.get("RNN") is RNNTranslator
+
+    def test_rnn_zero_weights_zero_output(self):
+        """All-zero weights and input: H_t = tanh(0) = 0."""
+        from orbital.translation.steps.rnn import RNNTranslator
+
+        I, H, T = 2, 2, 1
+        W_data = [0.0] * (H * I)
+        R_data = [0.0] * (H * H)
+
+        graph = self._make_rnn_graph(I, H, T, W_data, R_data)
+        table = ibis.memtable({"x0": [0.0], "x1": [0.0]})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"], "x1": table["x1"]})
+
+        RNNTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("Y_h")
+        assert isinstance(result, ValueVariablesGroup)
+        backend = ibis.duckdb.connect()
+        for v in result.values():
+            assert abs(backend.execute(v).tolist()[0]) < 1e-9
+
+    def test_rnn_identity_weight_tanh(self):
+        """W=identity, R=0, B=0, x=[1,0]: H_1 = tanh(1) at h=0, tanh(0) at h=1."""
+        import math
+        from orbital.translation.steps.rnn import RNNTranslator
+
+        I, H, T = 2, 2, 1
+        # W[h, i] = 1 if h==i else 0 (identity-like)
+        W_data = [1.0, 0.0, 0.0, 1.0]  # H=2, I=2
+        R_data = [0.0] * (H * H)
+
+        graph = self._make_rnn_graph(I, H, T, W_data, R_data)
+        table = ibis.memtable({"x0": [1.0], "x1": [0.0]})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"], "x1": table["x1"]})
+
+        RNNTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("Y_h")
+        backend = ibis.duckdb.connect()
+        vals = [backend.execute(v).tolist()[0] for v in result.values()]
+        assert abs(vals[0] - math.tanh(1.0)) < 1e-6
+        assert abs(vals[1] - math.tanh(0.0)) < 1e-9
+
+    def test_rnn_direction_bidirectional_raises(self):
+        """Bidirectional direction should raise NotImplementedError."""
+        from orbital.translation.steps.rnn import RNNTranslator
+
+        I, H, T = 1, 1, 1
+        W_data = [0.0] * (H * I)
+        R_data = [0.0] * (H * H)
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, H, I], W_data)
+        R_tensor = helper.make_tensor("R", TensorProto.FLOAT, [1, H, H], R_data)
+        node = helper.make_node(
+            "RNN",
+            inputs=["X", "W", "R"],
+            outputs=["", "Y_h"],
+            hidden_size=H,
+            direction="bidirectional",
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, T * I])],
+            [helper.make_tensor_value_info("Y_h", TensorProto.FLOAT, [None, H])],
+            [W_tensor, R_tensor],
+        )
+        table = ibis.memtable({"x0": [1.0]})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"]})
+        t = RNNTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        with pytest.raises(NotImplementedError, match="direction"):
+            t.process()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: MultiHeadAttentionTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestMultiHeadAttentionTranslator:
+    """Tests for the ONNX MultiHeadAttention (com.microsoft contrib) translator."""
+
+    optimizer = Optimizer(enabled=False)
+    backend = ibis.duckdb.connect()
+
+    def _make_mha_graph(self, T_q, D, num_heads, bias_flat=None):
+        """Build a minimal ONNX MultiHeadAttention graph (self-attention)."""
+        inputs = ["Q", "", "", "B"] if bias_flat is not None else ["Q", "", ""]
+        node = helper.make_node(
+            "MultiHeadAttention",
+            inputs=inputs,
+            outputs=["output"],
+            domain="com.microsoft",
+            num_heads=num_heads,
+        )
+        inits = []
+        if bias_flat is not None:
+            b_tensor = helper.make_tensor(
+                "B", TensorProto.FLOAT, [len(bias_flat)], bias_flat
+            )
+            inits.append(b_tensor)
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("Q", TensorProto.FLOAT, [None, T_q * D])],
+            [
+                helper.make_tensor_value_info(
+                    "output", TensorProto.FLOAT, [None, T_q * D]
+                )
+            ],
+            inits,
+        )
+        return graph
+
+    def test_mha_registered(self):
+        from orbital.translation.steps.multiheadattention import (
+            MultiHeadAttentionTranslator,
+        )
+        assert TRANSLATORS.get("MultiHeadAttention") is MultiHeadAttentionTranslator
+
+    def test_mha_self_attention_uniform_weights(self):
+        """Self-attention: identity Q=K=V, zero bias, uniform scores → average of V."""
+        from orbital.translation.steps.multiheadattention import (
+            MultiHeadAttentionTranslator,
+        )
+
+        # Single head, 2 timesteps, D=2 → head_dim=2
+        # Q = K = V = [[1, 0], [0, 1]]
+        # bias = [0] * 6
+        T_q, D, num_heads = 2, 2, 1
+        bias_flat = [0.0] * (3 * D)
+
+        graph = self._make_mha_graph(T_q, D, num_heads, bias_flat)
+        table = ibis.memtable(
+            {"q0": [1.0], "q1": [0.0], "q2": [0.0], "q3": [1.0]}
+        )
+        q_group = ValueVariablesGroup(
+            {
+                "q0": table["q0"],
+                "q1": table["q1"],
+                "q2": table["q2"],
+                "q3": table["q3"],
+            }
+        )
+
+        variables = GraphVariables(ibis.memtable({"Q": [0.0]}), graph)
+        variables["Q"] = q_group
+
+        MultiHeadAttentionTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("output")
+        assert isinstance(result, ValueVariablesGroup)
+        # Output has T_q * D = 4 entries
+        assert len(result) == T_q * D
+
+    def test_mha_no_bias_no_hidden_size_raises(self):
+        """Without bias and without hidden_size attribute, must raise NotImplementedError."""
+        from orbital.translation.steps.multiheadattention import (
+            MultiHeadAttentionTranslator,
+        )
+
+        T_q, D, num_heads = 2, 2, 1
+        # No bias
+        node = helper.make_node(
+            "MultiHeadAttention",
+            inputs=["Q"],
+            outputs=["output"],
+            domain="com.microsoft",
+            num_heads=num_heads,
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("Q", TensorProto.FLOAT, [None, T_q * D])],
+            [
+                helper.make_tensor_value_info(
+                    "output", TensorProto.FLOAT, [None, T_q * D]
+                )
+            ],
+            [],
+        )
+        table = ibis.memtable({"q0": [1.0], "q1": [0.0], "q2": [0.0], "q3": [1.0]})
+        q_group = ValueVariablesGroup(
+            {"q0": table["q0"], "q1": table["q1"], "q2": table["q2"], "q3": table["q3"]}
+        )
+        variables = GraphVariables(ibis.memtable({"Q": [0.0]}), graph)
+        variables["Q"] = q_group
+        t = MultiHeadAttentionTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        with pytest.raises(NotImplementedError, match="hidden size"):
+            t.process()
+
+    def test_mha_hidden_size_attribute(self):
+        """When bias is absent but hidden_size attribute is set, translation succeeds."""
+        from orbital.translation.steps.multiheadattention import (
+            MultiHeadAttentionTranslator,
+        )
+
+        T_q, D, num_heads = 2, 4, 2  # head_dim = 2
+        node = helper.make_node(
+            "MultiHeadAttention",
+            inputs=["Q"],
+            outputs=["output"],
+            domain="com.microsoft",
+            num_heads=num_heads,
+            hidden_size=D,
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [
+                helper.make_tensor_value_info(
+                    "Q", TensorProto.FLOAT, [None, T_q * D]
+                )
+            ],
+            [
+                helper.make_tensor_value_info(
+                    "output", TensorProto.FLOAT, [None, T_q * D]
+                )
+            ],
+            [],
+        )
+        cols = {f"q{i}": [float(i % 2)] for i in range(T_q * D)}
+        table = ibis.memtable(cols)
+        q_group = ValueVariablesGroup({k: table[k] for k in cols})
+        variables = GraphVariables(ibis.memtable({"Q": [0.0]}), graph)
+        variables["Q"] = q_group
+
+        MultiHeadAttentionTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("output")
+        assert isinstance(result, ValueVariablesGroup)
+        assert len(result) == T_q * D
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: MeanVarianceNormalizationTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestMeanVarianceNormalizationTranslator:
+    """Tests for MeanVarianceNormalizationTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_meanvariancenorm_registered(self):
+        from orbital.translation.steps.meanvariancenorm import (
+            MeanVarianceNormalizationTranslator,
+        )
+        assert TRANSLATORS.get("MeanVarianceNormalization") is MeanVarianceNormalizationTranslator
+
+    def test_meanvariancenorm_unit_output(self):
+        """Two features [1, 3]: mean=2, var=1; normalised to [-1, +1]."""
+        import math
+        table = ibis.memtable({"a": [1.0], "b": [3.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = MeanVarianceNormalization(x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.meanvariancenorm import (
+            MeanVarianceNormalizationTranslator,
+        )
+        MeanVarianceNormalizationTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("output")
+        backend = ibis.duckdb.connect()
+        a_val = list(backend.execute(result["a"]))[0]
+        b_val = list(backend.execute(result["b"]))[0]
+        # var=1, std=sqrt(1+1e-9)
+        std = math.sqrt(1.0 + 1e-9)
+        assert abs(a_val - (-1.0 / std)) < 1e-6
+        assert abs(b_val - (1.0 / std)) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: ReduceLogSumTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestReduceLogSumTranslator:
+    """Tests for ReduceLogSumTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_reducelogsum_registered(self):
+        from orbital.translation.steps.reducelogsum import ReduceLogSumTranslator
+        assert TRANSLATORS.get("ReduceLogSum") is ReduceLogSumTranslator
+
+    def test_reducelogsum_group(self):
+        """log(1+2+3) = log(6)."""
+        import math
+        table = ibis.memtable({"a": [1.0], "b": [2.0], "c": [3.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceLogSum(x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = NumericVariablesGroup(
+            {"a": table["a"], "b": table["b"], "c": table["c"]}
+        )
+        from orbital.translation.steps.reducelogsum import ReduceLogSumTranslator
+        ReduceLogSumTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("output")
+        backend = ibis.duckdb.connect()
+        val = list(backend.execute(result["out_0"]))[0]
+        assert abs(val - math.log(6.0)) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: ReduceSumSquareTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestReduceSumSquareTranslator:
+    """Tests for ReduceSumSquareTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_reducesumsquare_registered(self):
+        from orbital.translation.steps.reducesumsquare import ReduceSumSquareTranslator
+        assert TRANSLATORS.get("ReduceSumSquare") is ReduceSumSquareTranslator
+
+    def test_reducesumsquare_group(self):
+        """3^2 + 4^2 = 25."""
+        table = ibis.memtable({"a": [3.0], "b": [4.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceSumSquare(x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.reducesumsquare import ReduceSumSquareTranslator
+        ReduceSumSquareTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("output")
+        backend = ibis.duckdb.connect()
+        val = list(backend.execute(result["out_0"]))[0]
+        assert abs(val - 25.0) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: ShrinkTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestShrinkTranslator:
+    """Tests for ShrinkTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_shrink_registered(self):
+        from orbital.translation.steps.shrink import ShrinkTranslator
+        assert TRANSLATORS.get("Shrink") is ShrinkTranslator
+
+    def test_shrink_below_neg_lambd(self):
+        """x=-2, lambd=0.5, bias=1.0: y = -2 + 1 = -1."""
+        table = ibis.memtable({"x": [-2.0]})
+        scale_node = helper.make_node(
+            "Shrink", inputs=["x"], outputs=["y"], lambd=0.5, bias=1.0
+        )
+        graph = _make_graph_with_inits(
+            scale_node,
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None])],
+            [helper.make_tensor_value_info("y", TensorProto.FLOAT, [None])],
+            [],
+        )
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
+        variables["x"] = table["x"]
+        from orbital.translation.steps.shrink import ShrinkTranslator
+        ShrinkTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("y")
+        backend = ibis.duckdb.connect()
+        assert abs(list(backend.execute(result))[0] - (-1.0)) < 1e-6
+
+    def test_shrink_in_dead_zone(self):
+        """x=0.3, lambd=0.5: y = 0 (inside dead zone)."""
+        table = ibis.memtable({"x": [0.3]})
+        scale_node = helper.make_node(
+            "Shrink", inputs=["x"], outputs=["y"], lambd=0.5
+        )
+        graph = _make_graph_with_inits(
+            scale_node,
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None])],
+            [helper.make_tensor_value_info("y", TensorProto.FLOAT, [None])],
+            [],
+        )
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
+        variables["x"] = table["x"]
+        from orbital.translation.steps.shrink import ShrinkTranslator
+        ShrinkTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("y")
+        backend = ibis.duckdb.connect()
+        assert abs(list(backend.execute(result))[0]) < 1e-6
+
+    def test_shrink_above_lambd(self):
+        """x=2, lambd=0.5, bias=0.5: y = x - bias = 1.5."""
+        table = ibis.memtable({"x": [2.0]})
+        scale_node = helper.make_node(
+            "Shrink", inputs=["x"], outputs=["y"], lambd=0.5, bias=0.5
+        )
+        graph = _make_graph_with_inits(
+            scale_node,
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None])],
+            [helper.make_tensor_value_info("y", TensorProto.FLOAT, [None])],
+            [],
+        )
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
+        variables["x"] = table["x"]
+        from orbital.translation.steps.shrink import ShrinkTranslator
+        ShrinkTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("y")
+        backend = ibis.duckdb.connect()
+        assert abs(list(backend.execute(result))[0] - 1.5) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: ModTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestModTranslator:
+    """Tests for ModTranslator."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_mod_registered(self):
+        from orbital.translation.steps.mod import ModTranslator
+        assert TRANSLATORS.get("Mod") is ModTranslator
+
+    def test_mod_positive(self):
+        """7 % 3 = 1."""
+        divisor_tensor = helper.make_tensor("d", TensorProto.FLOAT, [1], [3.0])
+        node = helper.make_node("Mod", inputs=["x", "d"], outputs=["y"], fmod=0)
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None])],
+            [helper.make_tensor_value_info("y", TensorProto.FLOAT, [None])],
+            [divisor_tensor],
+        )
+        table = ibis.memtable({"x": [7.0]})
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
+        variables["x"] = table["x"]
+        from orbital.translation.steps.mod import ModTranslator
+        ModTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("y")
+        backend = ibis.duckdb.connect()
+        assert abs(list(backend.execute(result))[0] - 1.0) < 1e-6
+
+    def test_fmod_negative(self):
+        """fmod(-7, 3): remainder has sign of dividend → -1."""
+        divisor_tensor = helper.make_tensor("d", TensorProto.FLOAT, [1], [3.0])
+        node = helper.make_node("Mod", inputs=["x", "d"], outputs=["y"], fmod=1)
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None])],
+            [helper.make_tensor_value_info("y", TensorProto.FLOAT, [None])],
+            [divisor_tensor],
+        )
+        table = ibis.memtable({"x": [-7.0]})
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
+        variables["x"] = table["x"]
+        from orbital.translation.steps.mod import ModTranslator
+        ModTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("y")
+        backend = ibis.duckdb.connect()
+        val = list(backend.execute(result))[0]
+        assert abs(val - (-1.0)) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: ScatterElementsTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestScatterElementsTranslator:
+    """Tests for ScatterElementsTranslator (stub — always raises)."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_scatterelements_registered(self):
+        from orbital.translation.steps.scatterelements import ScatterElementsTranslator
+        assert TRANSLATORS.get("ScatterElements") is ScatterElementsTranslator
+
+    def test_scatterelements_raises(self):
+        """ScatterElements must always raise NotImplementedError."""
+        node = helper.make_node(
+            "ScatterElements", inputs=["data", "indices", "updates"], outputs=["y"]
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [
+                helper.make_tensor_value_info("data", TensorProto.FLOAT, [None]),
+                helper.make_tensor_value_info("indices", TensorProto.INT64, [None]),
+                helper.make_tensor_value_info("updates", TensorProto.FLOAT, [None]),
+            ],
+            [helper.make_tensor_value_info("y", TensorProto.FLOAT, [None])],
+            [],
+        )
+        # Provide a table with columns matching all graph inputs
+        table = ibis.memtable({"data": [1.0], "indices": [0], "updates": [2.0]})
+        variables = GraphVariables(table, graph)
+        from orbital.translation.steps.scatterelements import ScatterElementsTranslator
+        t = ScatterElementsTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        with pytest.raises(NotImplementedError):
+            t.process()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: ShapeTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestShapeTranslator:
+    """Tests for ShapeTranslator (stub — always raises)."""
+
+    optimizer = Optimizer(enabled=False)
+
+    def test_shape_registered(self):
+        from orbital.translation.steps.shape import ShapeTranslator
+        assert TRANSLATORS.get("Shape") is ShapeTranslator
+
+    def test_shape_raises(self):
+        """Shape must always raise NotImplementedError."""
+        node = helper.make_node("Shape", inputs=["x"], outputs=["y"])
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None])],
+            [helper.make_tensor_value_info("y", TensorProto.INT64, [None])],
+            [],
+        )
+        table = ibis.memtable({"x": [1.0]})
+        variables = GraphVariables(table, graph)
+        variables["x"] = table["x"]
+        from orbital.translation.steps.shape import ShapeTranslator
+        t = ShapeTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        with pytest.raises(NotImplementedError):
+            t.process()
