@@ -4,11 +4,12 @@ Normalises the input tensor element-wise using per-row mean and variance:
 
     mean  = (1/C) * sum_c x_c
     var   = (1/C) * sum_c (x_c - mean)^2
-    y_c   = (x_c - mean) / sqrt(var + 1e-9)
+    y_c   = (x_c - mean) / sqrt(var + epsilon)
 
-Only normalisation over the feature axis (all columns in a VariablesGroup) is
-supported; the ONNX ``axes`` attribute is accepted only when it reduces to
-feature-axis normalisation.
+The ``epsilon`` attribute is read from the node; the ONNX spec default is
+``1e-5``.  Only normalisation over the feature axis (all columns in a
+VariablesGroup) is supported; the ONNX ``axes`` attribute is accepted only when
+it reduces to feature-axis normalisation.
 
 References
 ----------
@@ -20,14 +21,12 @@ import ibis
 from ..translator import Translator
 from ..variables import NumericVariablesGroup, VariablesGroup
 
-_EPSILON = 1e-9
-
-
 class MeanVarianceNormalizationTranslator(Translator):
     """Translate the ONNX MeanVarianceNormalization operator."""
 
     def process(self) -> None:
         """Translate the MeanVarianceNormalization node."""
+        epsilon: float = float(self._attributes.get("epsilon", 1e-5))
         data = self._variables.consume(self.inputs[0])
 
         if not isinstance(data, VariablesGroup):
@@ -51,7 +50,7 @@ class MeanVarianceNormalizationTranslator(Translator):
             var_expr = var_expr + t
         var_expr = var_expr / ibis.literal(float(n))
 
-        std_expr = (var_expr + ibis.literal(_EPSILON)) ** ibis.literal(0.5)
+        std_expr = (var_expr + ibis.literal(epsilon)) ** ibis.literal(0.5)
 
         result = NumericVariablesGroup(
             {

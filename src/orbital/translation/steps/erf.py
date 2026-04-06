@@ -38,7 +38,7 @@ def _erf_approx(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue
             + t * (ibis.literal(_A3) + t * (ibis.literal(_A4) + t * ibis.literal(_A5)))
         )
     )
-    return sign * (ibis.literal(1.0) - poly * (ax * ax).negate().exp())
+    return sign * (ibis.literal(1.0) - poly * (ibis.literal(-1.0) * ax * ax).exp())
 
 
 class ErfTranslator(Translator):

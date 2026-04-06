@@ -3,12 +3,9 @@
 import ibis
 
 from ..translator import Translator
-from ..variables import ValueVariablesGroup, VariablesGroup
+from ..variables import VariablesGroup
+from ._rnn_base import _sigmoid, _write_sequence_outputs
 from .tanh import _tanh
-
-
-def _sigmoid(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
-    return ibis.literal(1.0) / (ibis.literal(1.0) + (-v).exp())
 
 
 class GRUTranslator(Translator):
@@ -207,20 +204,4 @@ class GRUTranslator(Translator):
         # ── Set outputs ───────────────────────────────────────────────────
         outputs = self.outputs  # may have 1 or 2 entries; some may be ""
 
-        # Y: full sequence [seq_len, num_directions, batch, H]
-        if outputs and outputs[0]:
-            y_group = ValueVariablesGroup(
-                {
-                    f"out_Y_{t}_{h}": all_H[t][h]
-                    for t in range(T)
-                    for h in range(H)
-                }
-            )
-            self._variables[outputs[0]] = y_group
-
-        # Y_h: final hidden state [num_directions, batch, H]
-        if len(outputs) > 1 and outputs[1]:
-            y_h_group = ValueVariablesGroup(
-                {f"out_Yh_{h}": H_state[h] for h in range(H)}
-            )
-            self._variables[outputs[1]] = y_h_group
+        _write_sequence_outputs(self._variables, outputs, all_H, H_state)

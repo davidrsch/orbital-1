@@ -33,7 +33,10 @@ class ConvTranslator(Translator):
         strides = self._attributes.get("strides", [1])
 
         if group != 1:
-            raise NotImplementedError("Conv: only group=1 is supported.")
+            # Support depthwise convolution: group == c_in (each channel its own filter).
+            # General grouped (group != 1 and group != c_in) is still not supported.
+            # The check below defers the group-vs-c_in validation until after reading W.
+            pass
 
         # ── Extract weights ────────────────────────────────────────────────
         w_tensor = self._variables.get_initializer(self.inputs[1])
@@ -46,7 +49,9 @@ class ConvTranslator(Translator):
                 f"Conv: only 1-D convolutions (3-D weight tensor) are supported;"
                 f" got weight shape {w_dims}."
             )
-        c_out, c_in, k_w = w_dims
+        c_out, c_in_per_group, k_w = w_dims
+        # Total input channels = c_in_per_group * group (ONNX weight is [C_out, C/group, k])
+        c_in = c_in_per_group * group
 
         w_flat = self._variables.get_initializer_value(self.inputs[1])
         if w_flat is None or not isinstance(w_flat, (list, tuple)):
@@ -92,6 +97,22 @@ class ConvTranslator(Translator):
         # X[c, w] → flat index c * w_in + w
         inp = lambda c, w: input_exprs[c * w_in + w]  # noqa: E731
 
+        # Validate grouped/depthwise configuration now that c_in is known.
+        if group != 1:
+            if group != c_in:
+                raise NotImplementedError(
+                    f"Conv: group={group} with C_in={c_in} is not supported;"
+                    " only group=1 (standard) or group==C_in (depthwise) are."
+                )
+            # Depthwise: c_in_per_group=1, c_out_per_group = c_out / group
+            if c_out % group != 0:
+                raise ValueError(
+                    f"Conv: C_out={c_out} is not divisible by group={group}."
+                )
+
+        c_in_per_group = c_in // group
+        c_out_per_group = c_out // group
+
         # effective kernel width considering dilation
         k_eff = dil * (k_w - 1) + 1
 
@@ -114,21 +135,24 @@ class ConvTranslator(Translator):
                 f" pads={pads}."
             )
 
-        # W[f, c, k] → flat index (f * c_in + c) * k_w + k
-        def w_val(f: int, c: int, k: int) -> float:
-            return float(w_flat[(f * c_in + c) * k_w + k])
+        # W[f, c_local, k] → flat index (f * c_in_per_group + c_local) * k_w + k
+        def w_val(f: int, c_local: int, k: int) -> float:
+            return float(w_flat[(f * c_in_per_group + c_local) * k_w + k])
 
         # ── Build output expressions ───────────────────────────────────────
         results: dict[str, ibis.expr.types.Value] = {}
         for f in range(c_out):
             b = float(bias_flat[f]) if bias_flat else 0.0
+            g = f // c_out_per_group  # group index for this output filter
+            c_in_start = g * c_in_per_group
             for p in range(w_out):
                 terms = []
-                for c in range(c_in):
+                for c_local in range(c_in_per_group):
+                    c = c_in_start + c_local
                     for k in range(k_w):
                         w_pos = p * stride + k * dil - pad_l
                         if 0 <= w_pos < w_in:
-                            terms.append(inp(c, w_pos) * w_val(f, c, k))
+                            terms.append(inp(c, w_pos) * w_val(f, c_local, k))
                 if terms:
                     dot = self._optimizer.fold_operation(sum(terms))
                 else:

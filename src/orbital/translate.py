@@ -57,6 +57,7 @@ from .translation.steps.multiheadattention import MultiHeadAttentionTranslator
 from .translation.steps.mul import MulTranslator
 from .translation.steps.neg import NegTranslator
 from .translation.steps.onehotencoder import OneHotEncoderTranslator
+from .translation.steps.pad import PadTranslator
 from .translation.steps.pow import PowTranslator
 from .translation.steps.prelu import PreluTranslator
 from .translation.steps.reducemax import ReduceMaxTranslator
@@ -88,6 +89,8 @@ from .translation.steps.sub import SubTranslator
 from .translation.steps.swish import SwishTranslator
 from .translation.steps.tanh import TanhTranslator
 from .translation.steps.thresholdedrelu import ThresholdedReluTranslator
+from .translation.steps.slice import SliceTranslator
+from .translation.steps.tile import TileTranslator
 from .translation.steps.transpose import TransposeTranslator
 from .translation.steps.trees import (
     TreeEnsembleClassifierTranslator,
@@ -142,6 +145,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "MeanVarianceNormalization": MeanVarianceNormalizationTranslator,
     "MultiHeadAttention": MultiHeadAttentionTranslator,
     "Neg": NegTranslator,
+    "Pad": PadTranslator,
     "Pow": PowTranslator,
     "PRelu": PreluTranslator,
     "ReduceL1": ReduceL1Translator,
@@ -157,7 +161,9 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Shrink": ShrinkTranslator,
     "ScatterElements": ScatterElementsTranslator,
     "Shape": ShapeTranslator,
+    "Slice": SliceTranslator,
     "Split": SplitTranslator,
+    "Tile": TileTranslator,
     "Flatten": FlattenTranslator,
     "LogSoftmax": LogSoftmaxTranslator,
     "MaxPool": MaxPoolTranslator,
