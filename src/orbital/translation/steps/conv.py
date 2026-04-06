@@ -95,7 +95,8 @@ class ConvTranslator(Translator):
             )
         w_in = total_in // c_in
         # X[c, w] → flat index c * w_in + w
-        inp = lambda c, w: input_exprs[c * w_in + w]  # noqa: E731
+        def inp(c: int, w: int) -> ibis.expr.types.Value:
+            return input_exprs[c * w_in + w]
 
         # Validate grouped/depthwise configuration now that c_in is known.
         if group != 1:

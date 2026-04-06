@@ -14,9 +14,29 @@ import sqlalchemy
 import numpy as np
 import pandas as pd
 import pytest
+from onnx import helper
 from sklearn.datasets import load_diabetes, load_iris
 
 PY39 = sys.version_info[:2] < (3, 10)
+
+
+# ---------------------------------------------------------------------------
+# Shared ONNX graph builder
+# ---------------------------------------------------------------------------
+
+def make_graph_with_inits(node, inputs_info, outputs_info, initializers):
+    """Create an ONNX GraphProto with the given node, I/O specs, and initializers.
+
+    This helper is used across multiple test modules to build minimal ONNX
+    graphs without the boilerplate of ``helper.make_graph``.
+    """
+    return helper.make_graph(
+        [node],
+        "test_graph",
+        inputs_info,
+        outputs_info,
+        initializer=initializers,
+    )
 
 
 def pytest_configure(config):

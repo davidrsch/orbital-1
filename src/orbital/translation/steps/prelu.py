@@ -19,7 +19,7 @@ from ..translator import Translator
 from ..variables import NumericVariablesGroup, VariablesGroup
 
 
-class PreluTranslator(Translator):
+class PReluTranslator(Translator):
     """Translate the ONNX PRelu operator: ``x if x >= 0 else slope*x``."""
 
     def process(self) -> None:

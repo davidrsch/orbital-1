@@ -12,7 +12,11 @@ class TransposeTranslator(Translator):
     is already handled structurally by ``Gemm``'s ``transB`` attribute, so
     at the variable level this node is a no-op.
 
-    Only 2D permutations (``perm`` of length 2) are supported.
+    Only 2D permutations (``perm`` of length 2) are trivially a pass-through;
+    for higher-dimensional tensors (``perm`` with length > 2) the permutation
+    cannot be represented as a reordering of flat SQL columns and a
+    ``NotImplementedError`` is raised rather than silently forwarding columns
+    in the original (incorrect) order.
     """
 
     def process(self) -> None:
@@ -23,7 +27,10 @@ class TransposeTranslator(Translator):
         perm = self._attributes.get("perm", None)
         if perm is not None and len(perm) > 2:
             raise NotImplementedError(
-                f"Transpose: only 2D permutations are supported in SQL context, got perm={perm}"
+                f"Transpose: N-D permutation (perm={perm}) is not supported. "
+                "orbital represents tensors as flat column groups in a SQL table; "
+                "only 2-D pass-through is implemented. Use Flatten + Gemm instead, "
+                "or restructure the model to avoid mid-graph transpositions."
             )
 
         self.set_output(data)

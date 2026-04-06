@@ -14,11 +14,16 @@ class SoftmaxTranslator(Translator):
 
     The operation computes the normalized exponential of the input::
 
-        Softmax = Exp(input) / Sum(Exp(input))
+        Softmax(x)_i = Exp(x_i - max(x)) / Sum(Exp(x_j - max(x)))
+
+    The numerically-stable form (subtract max before exponentiation) is
+    implemented inside ``apply_post_transform(data, "SOFTMAX")``; see
+    ``orbital.translation.transformations.apply_post_transform`` for the
+    exact ibis expression tree.
 
     Currently the Softmax operation is supported only for axis=-1 or axis=1,
-    which means for the a column group means that the softmax is computed
-    independently for each column in the group.
+    which means for a column group that the softmax is computed
+    independently for each row over all columns in the group.
     """
 
     def process(self) -> None:

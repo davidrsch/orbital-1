@@ -4,7 +4,12 @@ import ibis
 
 from ..translator import Translator
 from ..variables import ValueVariablesGroup, VariablesGroup
-from ._rnn_base import _sigmoid, _write_sequence_outputs
+from ._rnn_base import (
+    _get_flat_weights,
+    _sigmoid,
+    _write_bidir_sequence_outputs,
+    _write_sequence_outputs,
+)
 from .tanh import _tanh
 
 
@@ -41,8 +46,11 @@ class LSTMTranslator(Translator):
         # https://onnx.ai/onnx/operators/onnx__LSTM.html
 
         direction = str(self._attributes.get("direction", "forward"))
-        if direction != "forward":
-            raise NotImplementedError("LSTM: only direction='forward' is supported.")
+        if direction not in ("forward", "bidirectional"):
+            raise NotImplementedError(
+                f"LSTM: direction={direction!r} is not supported; "
+                "must be 'forward' or 'bidirectional'."
+            )
 
         activations = self._attributes.get("activations", None)
         if activations and list(activations) not in (
@@ -60,22 +68,20 @@ class LSTMTranslator(Translator):
         hidden_size = int(self._attributes["hidden_size"])
         H = hidden_size
 
-        # ── Extract W [1, 4H, I] ──────────────────────────────────────────
-        w_tensor = self._variables.get_initializer(self.inputs[1])
-        if w_tensor is None:
-            raise ValueError("LSTM: weight tensor W not found in initializers.")
-        _, four_h, I = list(w_tensor.dims)
+        # ── Extract W [num_directions, 4H, I] ────────────────────────────────────
+        w_flat, w_dims = _get_flat_weights(self._variables, self.inputs[1], "LSTM")
+        num_dir_w, four_h, I = w_dims
+        num_dir_expected = 2 if direction == "bidirectional" else 1
+        if num_dir_w != num_dir_expected:
+            raise ValueError(
+                f"LSTM: W has {num_dir_w} direction(s) but direction={direction!r} "
+                f"requires exactly {num_dir_expected} direction(s)."
+            )
         if four_h != 4 * H:
             raise ValueError(f"LSTM: W dim[1]={four_h} expected 4*hidden_size={4*H}.")
 
-        w_flat = self._variables.get_initializer_value(self.inputs[1])
-        if w_flat is None or not isinstance(w_flat, (list, tuple)):
-            raise ValueError("LSTM: W values could not be read.")
-
         # ── Extract R [1, 4H, H] ──────────────────────────────────────────
-        r_flat = self._variables.get_initializer_value(self.inputs[2])
-        if r_flat is None or not isinstance(r_flat, (list, tuple)):
-            raise ValueError("LSTM: R values could not be read.")
+        r_flat, _ = _get_flat_weights(self._variables, self.inputs[2], "LSTM")
 
         # ── Extract B [1, 8H] (optional) ─────────────────────────────────
         has_bias = len(self.inputs) > 3 and bool(self.inputs[3])
@@ -124,80 +130,106 @@ class LSTMTranslator(Translator):
             )
         T = total_in // I
 
-        # W[g, h, i] → w_flat[g * H * I + h * I + i]
-        def w_val(g: int, h: int, i: int) -> float:
-            return float(w_flat[g * H * I + h * I + i])
+        # W [num_directions, 4H, I] — offset by 4*H*I per direction
+        W_DIR = 4 * H * I
+        # R [num_directions, 4H, H] — offset by 4*H*H per direction
+        R_DIR = 4 * H * H
+        # B [num_directions, 8H] — offset by 8*H per direction
+        B_DIR = 8 * H
 
-        # R[g, h, hid] → r_flat[g * H * H + h * H + hid]
-        def r_val(g: int, h: int, hid: int) -> float:
-            return float(r_flat[g * H * H + h * H + hid])
+        def _run_direction(
+            d: int,
+            x_seq: list,
+        ) -> tuple[list, list, list]:
+            """Unroll one LSTM direction; returns (all_H, H_state, C_state)."""
+            w_off = d * W_DIR
+            r_off = d * R_DIR
+            b_off = d * B_DIR
 
-        # B: input bias for gate g, unit h → b_flat[g * H + h]
-        # B: recurrent bias for gate g, unit h → b_flat[4*H + g*H + h]
-        def bias_in(g: int, h: int) -> float:
-            return float(b_flat[g * H + h]) if b_flat else 0.0
+            def w_val(g: int, h: int, i: int) -> float:
+                return float(w_flat[w_off + g * H * I + h * I + i])
 
-        def bias_rec(g: int, h: int) -> float:
-            return float(b_flat[4 * H + g * H + h]) if b_flat else 0.0
+            def r_val(g: int, h: int, hid: int) -> float:
+                return float(r_flat[r_off + g * H * H + h * H + hid])
 
-        # ── Unroll T timesteps ────────────────────────────────────────────
-        H_state: list[ibis.expr.types.NumericValue] = [
-            ibis.literal(0.0) for _ in range(H)
-        ]
-        C_state: list[ibis.expr.types.NumericValue] = [
-            ibis.literal(0.0) for _ in range(H)
-        ]
+            def bias_in(g: int, h: int) -> float:
+                return float(b_flat[b_off + g * H + h]) if b_flat else 0.0
 
-        # Collect all Y timesteps if output Y is requested
-        all_H: list[list[ibis.expr.types.NumericValue]] = []
+            def bias_rec(g: int, h: int) -> float:
+                return float(b_flat[b_off + 4 * H + g * H + h]) if b_flat else 0.0
 
-        for t in range(T):
-            x_t = x_exprs[t * I : (t + 1) * I]
+            H_st: list[ibis.expr.types.NumericValue] = [ibis.literal(0.0) for _ in range(H)]
+            C_st: list[ibis.expr.types.NumericValue] = [ibis.literal(0.0) for _ in range(H)]
+            all_H_dir: list[list[ibis.expr.types.NumericValue]] = []
 
-            gates: list[list[ibis.expr.types.NumericValue]] = []
-            for g in range(4):  # IOFC
-                pre = []
-                for h in range(H):
-                    w_terms = [x_t[i] * w_val(g, h, i) for i in range(I)]
-                    r_terms = [H_state[hid] * r_val(g, h, hid) for hid in range(H)]
-                    b_total = bias_in(g, h) + bias_rec(g, h)
-                    val = (
-                        self._optimizer.fold_operation(sum(w_terms + r_terms))
-                        + b_total
+            for t in range(len(x_seq) // I):
+                x_t = x_seq[t * I : (t + 1) * I]
+
+                gates: list[list[ibis.expr.types.NumericValue]] = []
+                for g in range(4):  # IOFC
+                    pre = []
+                    for h in range(H):
+                        w_terms = [x_t[i] * w_val(g, h, i) for i in range(I)]
+                        r_terms = [H_st[hid] * r_val(g, h, hid) for hid in range(H)]
+                        b_total = bias_in(g, h) + bias_rec(g, h)
+                        val = (
+                            self._optimizer.fold_operation(sum(w_terms + r_terms))
+                            + b_total
+                        )
+                        pre.append(val)
+                    gates.append(pre)
+
+                pre_i, pre_o, pre_f, pre_c = gates  # IOFC
+
+                i_gate = [_sigmoid(v) for v in pre_i]
+                o_gate = [_sigmoid(v) for v in pre_o]
+                f_gate = [_sigmoid(v) for v in pre_f]
+                c_bar = [_tanh(v) for v in pre_c]
+
+                new_C = [
+                    self._optimizer.fold_operation(
+                        f_gate[h] * C_st[h] + i_gate[h] * c_bar[h]
                     )
-                    pre.append(val)
-                gates.append(pre)
+                    for h in range(H)
+                ]
+                new_H = [
+                    self._optimizer.fold_operation(o_gate[h] * _tanh(new_C[h]))
+                    for h in range(H)
+                ]
 
-            pre_i, pre_o, pre_f, pre_c = gates  # IOFC
+                H_st = new_H
+                C_st = new_C
+                all_H_dir.append(new_H)
 
-            i_gate = [_sigmoid(v) for v in pre_i]
-            o_gate = [_sigmoid(v) for v in pre_o]
-            f_gate = [_sigmoid(v) for v in pre_f]
-            c_bar = [_tanh(v) for v in pre_c]
+            return all_H_dir, H_st, C_st
 
-            new_C = [
-                self._optimizer.fold_operation(
-                    f_gate[h] * C_state[h] + i_gate[h] * c_bar[h]
-                )
-                for h in range(H)
-            ]
-            new_H = [
-                self._optimizer.fold_operation(o_gate[h] * _tanh(new_C[h]))
-                for h in range(H)
-            ]
-
-            H_state = new_H
-            C_state = new_C
-            all_H.append(new_H)
-
-        # ── Set outputs ───────────────────────────────────────────────────
+        # ── Run direction(s) ──────────────────────────────────────────────
         outputs = self.outputs  # may have 1, 2, or 3 entries; some may be ""
 
-        _write_sequence_outputs(self._variables, outputs, all_H, H_state)
+        all_H_fwd, H_state_fwd, C_state_fwd = _run_direction(0, x_exprs)
 
-        # Y_c: final cell state [num_directions, batch, H] (LSTM only)
-        if len(outputs) > 2 and outputs[2]:
-            y_c_group = ValueVariablesGroup(
-                {f"out_Yc_{h}": C_state[h] for h in range(H)}
+        if direction == "bidirectional":
+            x_bwd: list = []
+            for t in reversed(range(T)):
+                x_bwd.extend(x_exprs[t * I : (t + 1) * I])
+            all_H_bwd_rev, H_state_bwd, C_state_bwd = _run_direction(1, x_bwd)
+            # Re-align: step 0 of the backward pass processed t=T-1, etc.
+            all_H_bwd = list(reversed(all_H_bwd_rev))
+
+            _write_bidir_sequence_outputs(
+                self._variables, outputs,
+                all_H_fwd, all_H_bwd, H_state_fwd, H_state_bwd,
             )
-            self._variables[outputs[2]] = y_c_group
+            if len(outputs) > 2 and outputs[2]:
+                self._variables[outputs[2]] = ValueVariablesGroup(
+                    {
+                        **{f"out_Yc_0_{h}": C_state_fwd[h] for h in range(H)},
+                        **{f"out_Yc_1_{h}": C_state_bwd[h] for h in range(H)},
+                    }
+                )
+        else:
+            _write_sequence_outputs(self._variables, outputs, all_H_fwd, H_state_fwd)
+            if len(outputs) > 2 and outputs[2]:
+                self._variables[outputs[2]] = ValueVariablesGroup(
+                    {f"out_Yc_{h}": C_state_fwd[h] for h in range(H)}
+                )

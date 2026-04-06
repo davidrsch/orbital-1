@@ -27,7 +27,8 @@ from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
 from orbital.translation.steps.labelencoder import LabelEncoderTranslator
 from orbital.translation.steps.where import WhereTranslator
 from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator, FeatureVectorizerTranslator
+from orbital.translation.steps.concat import ConcatTranslator
+from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
 from orbital.translation.steps.gather import GatherTranslator
 from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 from orbital.translation.variables import (
@@ -47,16 +48,39 @@ class TestStepCoverage:
         """Every step registered in TRANSLATORS must have a test class.
 
         Test classes must follow the naming convention Test{OperationName}Translator.
-        This test ensures we don't forget to add tests when implementing new steps.
+        This test scans both the current module and any ``test_steps_*.py`` sibling
+        files so that test classes split into focused sub-modules are also found.
         """
+        import importlib.util
         import sys
+        from pathlib import Path
 
+        existing_test_classes: set[str] = set()
+
+        # Scan current module
         module = sys.modules[__name__]
-        existing_test_classes = {
+        existing_test_classes.update(
             name
             for name in dir(module)
             if name.startswith("Test") and isinstance(getattr(module, name), type)
-        }
+        )
+
+        # Scan sibling test_steps_*.py modules (future split files)
+        test_dir = Path(__file__).parent
+        for py_file in sorted(test_dir.glob("test_steps_*.py")):
+            mod_name = py_file.stem
+            spec = importlib.util.spec_from_file_location(mod_name, py_file)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                try:
+                    spec.loader.exec_module(mod)
+                    existing_test_classes.update(
+                        name
+                        for name in dir(mod)
+                        if name.startswith("Test") and isinstance(getattr(mod, name), type)
+                    )
+                except Exception:
+                    pass  # ignore import errors in sibling files
 
         missing_tests = []
         for operation in sorted(TRANSLATORS.keys()):
@@ -71,7 +95,8 @@ class TestStepCoverage:
             pytest.fail(
                 f"The following {len(missing_tests)} steps are missing test classes:\n"
                 f"{missing_list}\n\n"
-                f"Add a test class for each step to test_pipeline_steps.py"
+                f"Add a test class for each step to test_pipeline_steps.py or a "
+                f"test_steps_*.py sibling file."
             )
 
 
@@ -1437,7 +1462,7 @@ class TestReshapeTranslator:
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         )
 
-        with pytest.raises(ValueError, match="Reshape shape=\\[-1, 2\\] not supported"):
+        with pytest.raises(NotImplementedError, match="Reshape"):
             translator.process()
 
 
@@ -4418,6 +4443,25 @@ class TestReluTranslator:
         ).tolist()
         assert result == [0.0, 0.0, 3.0]
 
+    def test_relu_non_numeric_raises(self):
+        """Relu raises ValueError when the input variable is non-numeric."""
+        import pytest
+        from orbital.translation.steps.relu import ReluTranslator
+        table = ibis.memtable({"input": [1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = Relu(input)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        # Override the "input" variable with a non-numeric (string) column.
+        str_table = ibis.memtable({"val": ["a", "b"]})
+        variables["input"] = str_table["val"]
+        with pytest.raises(ValueError, match="numeric"):
+            ReluTranslator(
+                table, model.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()
+
 
 class TestTanhTranslator:
     """Tests for TanhTranslator — see test_mlp.py for comprehensive tests."""
@@ -4450,6 +4494,24 @@ class TestTanhTranslator:
         assert abs(result[1] - math.tanh(1.0)) < 1e-9
         assert abs(result[2] - math.tanh(-1.0)) < 1e-9
 
+    def test_tanh_non_numeric_raises(self):
+        """Tanh raises ValueError when the input variable is non-numeric."""
+        import pytest
+        from orbital.translation.steps.tanh import TanhTranslator
+        table = ibis.memtable({"input": [1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = Tanh(input)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        str_table = ibis.memtable({"val": ["a", "b"]})
+        variables["input"] = str_table["val"]
+        with pytest.raises(ValueError, match="numeric"):
+            TanhTranslator(
+                table, model.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()
+
 
 class TestSigmoidTranslator:
     """Tests for SigmoidTranslator — see test_mlp.py for comprehensive tests."""
@@ -4480,6 +4542,24 @@ class TestSigmoidTranslator:
         assert abs(result[0] - 0.5) < 1e-9
         assert result[1] > 0.5  # sigmoid(positive) > 0.5
         assert result[2] < 0.5  # sigmoid(negative) < 0.5
+
+    def test_sigmoid_non_numeric_raises(self):
+        """Sigmoid raises ValueError when the input variable is non-numeric."""
+        import pytest
+        from orbital.translation.steps.sigmoid import SigmoidTranslator
+        table = ibis.memtable({"input": [1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] input) => (float[N] output) {
+                output = Sigmoid(input)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        str_table = ibis.memtable({"val": ["a", "b"]})
+        variables["input"] = str_table["val"]
+        with pytest.raises(ValueError, match="numeric"):
+            SigmoidTranslator(
+                table, model.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()
 
 
 class TestGemmTranslator:
@@ -5485,16 +5565,16 @@ class TestPReluTranslator:
         """)
 
     def test_prelu_registered(self):
-        from orbital.translation.steps.prelu import PreluTranslator
-        assert TRANSLATORS.get("PRelu") is PreluTranslator
+        from orbital.translation.steps.prelu import PReluTranslator
+        assert TRANSLATORS.get("PRelu") is PReluTranslator
 
     def test_prelu_positive_unchanged(self):
         """PRelu of positive values = x (slope doesn't matter)."""
         table = ibis.memtable({"x": [1.0, 2.0, 3.0]})
         model = self._make_prelu_graph(0.25)
         variables = GraphVariables(table, model)
-        from orbital.translation.steps.prelu import PreluTranslator
-        t = PreluTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        from orbital.translation.steps.prelu import PReluTranslator
+        t = PReluTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
         t.process()
         backend = ibis.duckdb.connect()
         result = list(backend.execute(variables.peek_variable("output")))
@@ -5505,8 +5585,8 @@ class TestPReluTranslator:
         table = ibis.memtable({"x": [-2.0, -4.0]})
         model = self._make_prelu_graph(0.5)
         variables = GraphVariables(table, model)
-        from orbital.translation.steps.prelu import PreluTranslator
-        t = PreluTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        from orbital.translation.steps.prelu import PReluTranslator
+        t = PReluTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
         t.process()
         backend = ibis.duckdb.connect()
         result = list(backend.execute(variables.peek_variable("output")))
@@ -6784,7 +6864,7 @@ class TestLSTMTranslator:
         assert len(result) == H
 
     def test_lstm_rejects_bidirectional(self):
-        """Bidirectional LSTM raises NotImplementedError."""
+        """Bidirectional LSTM with 1-direction weights raises ValueError."""
         from orbital.translation.steps.lstm import LSTMTranslator
 
         I, H, T = 1, 1, 1
@@ -6810,7 +6890,7 @@ class TestLSTMTranslator:
         variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
         variables["X"] = ValueVariablesGroup({"x0": table["x0"]})
 
-        with pytest.raises(NotImplementedError, match="direction"):
+        with pytest.raises(ValueError, match="direction"):
             LSTMTranslator(
                 table, graph.node[0], variables, self.optimizer, TranslationOptions()
             ).process()
@@ -7020,7 +7100,7 @@ class TestGRUTranslator:
         assert len(result) == H
 
     def test_gru_rejects_bidirectional(self):
-        """Bidirectional GRU raises NotImplementedError."""
+        """Bidirectional GRU with 1-direction weights raises ValueError."""
         from orbital.translation.steps.gru import GRUTranslator
 
         I, H, T = 1, 1, 1
@@ -7046,7 +7126,7 @@ class TestGRUTranslator:
         variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
         variables["X"] = ValueVariablesGroup({"x0": table["x0"]})
 
-        with pytest.raises(NotImplementedError, match="direction"):
+        with pytest.raises(ValueError, match="direction"):
             GRUTranslator(
                 table, graph.node[0], variables, self.optimizer, TranslationOptions()
             ).process()
@@ -7746,7 +7826,7 @@ class TestRNNTranslator:
         assert abs(vals[1] - math.tanh(0.0)) < 1e-9
 
     def test_rnn_direction_bidirectional_raises(self):
-        """Bidirectional direction should raise NotImplementedError."""
+        """Bidirectional RNN with 1-direction weights raises ValueError."""
         from orbital.translation.steps.rnn import RNNTranslator
 
         I, H, T = 1, 1, 1
@@ -7773,7 +7853,7 @@ class TestRNNTranslator:
         t = RNNTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         )
-        with pytest.raises(NotImplementedError, match="direction"):
+        with pytest.raises(ValueError, match="direction"):
             t.process()
 
 
@@ -7938,6 +8018,135 @@ class TestMultiHeadAttentionTranslator:
         result = variables.peek_variable("output")
         assert isinstance(result, ValueVariablesGroup)
         assert len(result) == T_q * D
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: AttentionTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestAttentionTranslator:
+    """Tests for the ONNX Attention (com.microsoft fused-QKV) translator."""
+
+    optimizer = Optimizer(enabled=False)
+    backend = ibis.duckdb.connect()
+
+    def _make_attention_graph(self, T, I_size, H, num_heads, w_flat, bias_flat=None):
+        """Build a minimal ONNX Attention graph."""
+        inputs = ["X", "W", "B"] if bias_flat is not None else ["X", "W"]
+        node = helper.make_node(
+            "Attention",
+            inputs=inputs,
+            outputs=["output"],
+            domain="com.microsoft",
+            num_heads=num_heads,
+        )
+        inits = [
+            helper.make_tensor("W", TensorProto.FLOAT, [I_size, 3 * H], w_flat),
+        ]
+        if bias_flat is not None:
+            inits.append(
+                helper.make_tensor("B", TensorProto.FLOAT, [3 * H], bias_flat)
+            )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, T * I_size])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, T * H])],
+            inits,
+        )
+        return graph
+
+    def test_attention_registered(self):
+        from orbital.translation.steps.attention import AttentionTranslator
+        assert TRANSLATORS.get("Attention") is AttentionTranslator
+
+    def test_attention_identity_weight_single_timestep(self):
+        """Single timestep: identity QKV weights, no bias → softmax of one score = 1.0."""
+        from orbital.translation.steps.attention import AttentionTranslator
+
+        # T=1, I=2, H=2, num_heads=1, head_dim=2
+        # W = identity-like: just a 2x6 matrix (first two cols = Q, next = K, last = V)
+        # Use all-zero weights for simplicity → output should be all zeros
+        T, I_size, H, num_heads = 1, 2, 2, 1
+        w_flat = [0.0] * (I_size * 3 * H)
+
+        graph = self._make_attention_graph(T, I_size, H, num_heads, w_flat)
+        cols = {"x0": [1.0], "x1": [2.0]}
+        table = ibis.memtable(cols)
+        x_group = ValueVariablesGroup({k: table[k] for k in cols})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = x_group
+
+        AttentionTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("output")
+        assert isinstance(result, ValueVariablesGroup)
+        # T * H = 2 output columns
+        assert len(result) == T * H
+        # all weights zero → all projections zero → output zero
+        for expr in result.values():
+            val = self.backend.execute(expr).item()
+            assert abs(val) < 1e-9
+
+    def test_attention_multi_head_output_shape(self):
+        """Multi-head: output group has T * H entries."""
+        from orbital.translation.steps.attention import AttentionTranslator
+
+        T, I_size, H, num_heads = 2, 4, 4, 2  # head_dim = 2
+        import random
+        random.seed(42)
+        w_flat = [random.gauss(0, 0.1) for _ in range(I_size * 3 * H)]
+
+        graph = self._make_attention_graph(T, I_size, H, num_heads, w_flat)
+        cols = {f"x{i}": [float(i) / 10] for i in range(T * I_size)}
+        table = ibis.memtable(cols)
+        x_group = ValueVariablesGroup({k: table[k] for k in cols})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = x_group
+
+        AttentionTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("output")
+        assert isinstance(result, ValueVariablesGroup)
+        assert len(result) == T * H
+
+    def test_attention_mask_index_raises(self):
+        """Passing mask_index (input[3]) must raise NotImplementedError."""
+        from orbital.translation.steps.attention import AttentionTranslator
+
+        T, I_size, H, num_heads = 1, 2, 2, 1
+        w_flat = [0.0] * (I_size * 3 * H)
+        mask_tensor = helper.make_tensor("M", TensorProto.INT32, [1], [1])
+        node = helper.make_node(
+            "Attention",
+            inputs=["X", "W", "", "M"],
+            outputs=["output"],
+            domain="com.microsoft",
+            num_heads=num_heads,
+        )
+        inits = [
+            helper.make_tensor("W", TensorProto.FLOAT, [I_size, 3 * H], w_flat),
+            mask_tensor,
+        ]
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, T * I_size])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, T * H])],
+            inits,
+        )
+        cols = {"x0": [1.0], "x1": [2.0]}
+        table = ibis.memtable(cols)
+        x_group = ValueVariablesGroup({k: table[k] for k in cols})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = x_group
+        with pytest.raises(NotImplementedError, match="mask_index"):
+            AttentionTranslator(
+                table, graph.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()
 
 
 # ---------------------------------------------------------------------------

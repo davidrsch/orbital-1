@@ -41,7 +41,12 @@ class ReshapeTranslator(Translator):
             # number of columns, nothing has changed.
             pass
         else:
-            raise ValueError(f"Reshape shape={shape} not supported")
+            raise NotImplementedError(
+                f"Reshape: cannot change the number of feature columns from "
+                f"{first_operand_len} to {shape[1] if len(shape) == 2 else 1}. "
+                "orbital executes one row at a time in SQL; reshaping the feature "
+                "axis (i.e. merging or splitting column groups) is not supported."
+            )
 
         # At this point we should have a single column containing the
         # result of the whole expression, so there should really be nothing to reshape.

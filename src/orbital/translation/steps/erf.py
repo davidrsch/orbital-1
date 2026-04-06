@@ -7,12 +7,18 @@ import ibis
 from ..translator import Translator
 from ..variables import NumericVariablesGroup, VariablesGroup
 
-# Abramowitz & Stegun 7.1.28 rational approximation for erf(x).
+# Abramowitz & Stegun (1964) §7.1.28 rational approximation for erf(x).
 # Max absolute error: |erf(x) - approx(x)| < 1.5e-7 for all real x.
 # Formula: erf(x) ≈ sign(x) * (1 - poly(t) * exp(-x²))
 # where t = 1 / (1 + 0.3275911 * |x|),  poly(t) = sum(a_i * t^i, i=1..5)
-# This is used because many SQL dialects (including DuckDB) do not expose erf()
-# as a built-in scalar function.
+#
+# NOTE: This is an intentional approximation. The ONNX Erf operator specifies
+# the exact mathematical erf() function, but most SQL dialects — including
+# DuckDB, SQLite, and Spark SQL — do not expose erf() as a native scalar
+# function.  The A&S polynomial achieves float32-level accuracy (max error
+# ≈ 1.5e-7) which is sufficient for all practical ANN inference use cases.
+# The same polynomial is used by orbital's R counterpart (ann-helpers.R
+# .erf_approx_expr) and by the Gelu translator in approximate=None mode.
 _P = 0.3275911
 _A1 = 0.254829592
 _A2 = -0.284496736

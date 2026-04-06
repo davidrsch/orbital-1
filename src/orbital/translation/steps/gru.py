@@ -4,7 +4,12 @@ import ibis
 
 from ..translator import Translator
 from ..variables import VariablesGroup
-from ._rnn_base import _sigmoid, _write_sequence_outputs
+from ._rnn_base import (
+    _get_flat_weights,
+    _sigmoid,
+    _write_bidir_sequence_outputs,
+    _write_sequence_outputs,
+)
 from .tanh import _tanh
 
 
@@ -44,8 +49,11 @@ class GRUTranslator(Translator):
         # https://onnx.ai/onnx/operators/onnx__GRU.html
 
         direction = str(self._attributes.get("direction", "forward"))
-        if direction != "forward":
-            raise NotImplementedError("GRU: only direction='forward' is supported.")
+        if direction not in ("forward", "bidirectional"):
+            raise NotImplementedError(
+                f"GRU: direction={direction!r} is not supported; "
+                "must be 'forward' or 'bidirectional'."
+            )
 
         activations = self._attributes.get("activations", None)
         if activations and list(activations) not in (
@@ -65,22 +73,20 @@ class GRUTranslator(Translator):
         hidden_size = int(self._attributes["hidden_size"])
         H = hidden_size
 
-        # ── Extract W [1, 3H, I] ──────────────────────────────────────────
-        w_tensor = self._variables.get_initializer(self.inputs[1])
-        if w_tensor is None:
-            raise ValueError("GRU: weight tensor W not found in initializers.")
-        _, three_h, I = list(w_tensor.dims)
+        # ── Extract W [num_directions, 3H, I] ────────────────────────────────────
+        w_flat, w_dims = _get_flat_weights(self._variables, self.inputs[1], "GRU")
+        num_dir_w, three_h, I = w_dims
+        num_dir_expected = 2 if direction == "bidirectional" else 1
+        if num_dir_w != num_dir_expected:
+            raise ValueError(
+                f"GRU: W has {num_dir_w} direction(s) but direction={direction!r} "
+                f"requires exactly {num_dir_expected} direction(s)."
+            )
         if three_h != 3 * H:
             raise ValueError(f"GRU: W dim[1]={three_h} expected 3*hidden_size={3*H}.")
 
-        w_flat = self._variables.get_initializer_value(self.inputs[1])
-        if w_flat is None or not isinstance(w_flat, (list, tuple)):
-            raise ValueError("GRU: W values could not be read.")
-
         # ── Extract R [1, 3H, H] ──────────────────────────────────────────
-        r_flat = self._variables.get_initializer_value(self.inputs[2])
-        if r_flat is None or not isinstance(r_flat, (list, tuple)):
-            raise ValueError("GRU: R values could not be read.")
+        r_flat, _ = _get_flat_weights(self._variables, self.inputs[2], "GRU")
 
         # ── Extract B [1, 6H] (optional) ─────────────────────────────────
         has_bias = len(self.inputs) > 3 and bool(self.inputs[3])
@@ -118,90 +124,111 @@ class GRUTranslator(Translator):
             )
         T = total_in // I
 
-        # W[g, h, i] → w_flat[g * H * I + h * I + i]
-        def w_val(g: int, h: int, i: int) -> float:
-            return float(w_flat[g * H * I + h * I + i])
+        # W [num_directions, 3H, I] — offset by 3*H*I per direction
+        W_DIR = 3 * H * I
+        # R [num_directions, 3H, H] — offset by 3*H*H per direction
+        R_DIR = 3 * H * H
+        # B [num_directions, 6H] — offset by 6*H per direction
+        B_DIR = 6 * H
 
-        # R[g, h, hid] → r_flat[g * H * H + h * H + hid]
-        def r_val(g: int, h: int, hid: int) -> float:
-            return float(r_flat[g * H * H + h * H + hid])
+        def _run_direction(
+            d: int,
+            x_seq: list,
+        ) -> tuple[list, list]:
+            """Unroll one GRU direction; returns (all_H, H_state)."""
+            w_off = d * W_DIR
+            r_off = d * R_DIR
+            b_off = d * B_DIR
 
-        def bias_in(g: int, h: int) -> float:
-            return float(b_flat[g * H + h]) if b_flat else 0.0
+            def w_val(g: int, h: int, i: int) -> float:
+                return float(w_flat[w_off + g * H * I + h * I + i])
 
-        def bias_rec(g: int, h: int) -> float:
-            return float(b_flat[3 * H + g * H + h]) if b_flat else 0.0
+            def r_val(g: int, h: int, hid: int) -> float:
+                return float(r_flat[r_off + g * H * H + h * H + hid])
 
-        # ── Unroll T timesteps ────────────────────────────────────────────
-        H_state: list[ibis.expr.types.NumericValue] = [
-            ibis.literal(0.0) for _ in range(H)
-        ]
+            def bias_in(g: int, h: int) -> float:
+                return float(b_flat[b_off + g * H + h]) if b_flat else 0.0
 
-        all_H: list[list[ibis.expr.types.NumericValue]] = []
+            def bias_rec(g: int, h: int) -> float:
+                return float(b_flat[b_off + 3 * H + g * H + h]) if b_flat else 0.0
 
-        for t in range(T):
-            x_t = x_exprs[t * I : (t + 1) * I]
+            H_st: list[ibis.expr.types.NumericValue] = [ibis.literal(0.0) for _ in range(H)]
+            all_H_dir: list[list[ibis.expr.types.NumericValue]] = []
 
-            # z gate (update gate)
-            pre_z = [
-                self._optimizer.fold_operation(
-                    sum(
-                        [x_t[i] * w_val(self._GATE_Z, h, i) for i in range(I)]
-                        + [H_state[hid] * r_val(self._GATE_Z, h, hid) for hid in range(H)]
+            for t in range(len(x_seq) // I):
+                x_t = x_seq[t * I : (t + 1) * I]
+
+                pre_z = [
+                    self._optimizer.fold_operation(
+                        sum(
+                            [x_t[i] * w_val(self._GATE_Z, h, i) for i in range(I)]
+                            + [H_st[hid] * r_val(self._GATE_Z, h, hid) for hid in range(H)]
+                        )
+                        + bias_in(self._GATE_Z, h)
+                        + bias_rec(self._GATE_Z, h)
                     )
-                    + bias_in(self._GATE_Z, h)
-                    + bias_rec(self._GATE_Z, h)
-                )
-                for h in range(H)
-            ]
+                    for h in range(H)
+                ]
 
-            # r gate (reset gate)
-            pre_r = [
-                self._optimizer.fold_operation(
-                    sum(
-                        [x_t[i] * w_val(self._GATE_R, h, i) for i in range(I)]
-                        + [H_state[hid] * r_val(self._GATE_R, h, hid) for hid in range(H)]
+                pre_r = [
+                    self._optimizer.fold_operation(
+                        sum(
+                            [x_t[i] * w_val(self._GATE_R, h, i) for i in range(I)]
+                            + [H_st[hid] * r_val(self._GATE_R, h, hid) for hid in range(H)]
+                        )
+                        + bias_in(self._GATE_R, h)
+                        + bias_rec(self._GATE_R, h)
                     )
-                    + bias_in(self._GATE_R, h)
-                    + bias_rec(self._GATE_R, h)
-                )
-                for h in range(H)
-            ]
+                    for h in range(H)
+                ]
 
-            z_gate = [_sigmoid(v) for v in pre_z]
-            r_gate = [_sigmoid(v) for v in pre_r]
+                z_gate = [_sigmoid(v) for v in pre_z]
+                r_gate = [_sigmoid(v) for v in pre_r]
 
-            # h̃ gate – r ⊙ H_prev before the recurrent weight multiplication
-            # (ONNX default: linear_before_reset=0)
-            pre_h = [
-                self._optimizer.fold_operation(
-                    sum(
-                        [x_t[i] * w_val(self._GATE_H, h, i) for i in range(I)]
-                        + [
-                            (r_gate[hid] * H_state[hid]) * r_val(self._GATE_H, h, hid)
-                            for hid in range(H)
-                        ]
+                pre_h = [
+                    self._optimizer.fold_operation(
+                        sum(
+                            [x_t[i] * w_val(self._GATE_H, h, i) for i in range(I)]
+                            + [
+                                (r_gate[hid] * H_st[hid]) * r_val(self._GATE_H, h, hid)
+                                for hid in range(H)
+                            ]
+                        )
+                        + bias_in(self._GATE_H, h)
+                        + bias_rec(self._GATE_H, h)
                     )
-                    + bias_in(self._GATE_H, h)
-                    + bias_rec(self._GATE_H, h)
-                )
-                for h in range(H)
-            ]
+                    for h in range(H)
+                ]
 
-            h_tilde = [_tanh(v) for v in pre_h]
+                h_tilde = [_tanh(v) for v in pre_h]
 
-            new_H = [
-                self._optimizer.fold_operation(
-                    (ibis.literal(1.0) - z_gate[h]) * h_tilde[h]
-                    + z_gate[h] * H_state[h]
-                )
-                for h in range(H)
-            ]
+                new_H = [
+                    self._optimizer.fold_operation(
+                        (ibis.literal(1.0) - z_gate[h]) * h_tilde[h]
+                        + z_gate[h] * H_st[h]
+                    )
+                    for h in range(H)
+                ]
 
-            H_state = new_H
-            all_H.append(new_H)
+                H_st = new_H
+                all_H_dir.append(new_H)
 
-        # ── Set outputs ───────────────────────────────────────────────────
+            return all_H_dir, H_st
+
+        # ── Run direction(s) ──────────────────────────────────────────────
         outputs = self.outputs  # may have 1 or 2 entries; some may be ""
 
-        _write_sequence_outputs(self._variables, outputs, all_H, H_state)
+        all_H_fwd, H_state_fwd = _run_direction(0, x_exprs)
+
+        if direction == "bidirectional":
+            x_bwd: list = []
+            for t in reversed(range(T)):
+                x_bwd.extend(x_exprs[t * I : (t + 1) * I])
+            all_H_bwd_rev, H_state_bwd = _run_direction(1, x_bwd)
+            all_H_bwd = list(reversed(all_H_bwd_rev))
+            _write_bidir_sequence_outputs(
+                self._variables, outputs,
+                all_H_fwd, all_H_bwd, H_state_fwd, H_state_bwd,
+            )
+        else:
+            _write_sequence_outputs(self._variables, outputs, all_H_fwd, H_state_fwd)

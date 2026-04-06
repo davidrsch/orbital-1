@@ -54,13 +54,14 @@ from .translation.steps.maxpool import MaxPoolTranslator
 from .translation.steps.mish import MishTranslator
 from .translation.steps.mod import ModTranslator
 from .translation.steps.meanvariancenorm import MeanVarianceNormalizationTranslator
+from .translation.steps.attention import AttentionTranslator
 from .translation.steps.multiheadattention import MultiHeadAttentionTranslator
 from .translation.steps.mul import MulTranslator
 from .translation.steps.neg import NegTranslator
 from .translation.steps.onehotencoder import OneHotEncoderTranslator
 from .translation.steps.pad import PadTranslator
 from .translation.steps.pow import PowTranslator
-from .translation.steps.prelu import PreluTranslator
+from .translation.steps.prelu import PReluTranslator
 from .translation.steps.reducemax import ReduceMaxTranslator
 from .translation.steps.reducemean import ReduceMeanTranslator
 from .translation.steps.reducemin import ReduceMinTranslator
@@ -144,11 +145,12 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Mish": MishTranslator,
     "Mod": ModTranslator,
     "MeanVarianceNormalization": MeanVarianceNormalizationTranslator,
+    "Attention": AttentionTranslator,
     "MultiHeadAttention": MultiHeadAttentionTranslator,
     "Neg": NegTranslator,
     "Pad": PadTranslator,
     "Pow": PowTranslator,
-    "PRelu": PreluTranslator,
+    "PRelu": PReluTranslator,
     "ReduceL1": ReduceL1Translator,
     "ReduceL2": ReduceL2Translator,
     "ReduceLogSum": ReduceLogSumTranslator,

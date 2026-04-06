@@ -10,6 +10,48 @@ def _sigmoid(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
     return ibis.literal(1.0) / (ibis.literal(1.0) + (-v).exp())
 
 
+def _get_flat_weights(
+    variables: object,
+    input_name: str,
+    op_name: str,
+) -> tuple[list, list[int]]:
+    """Return ``(flat_values, dims)`` for a weight initializer.
+
+    Parameters
+    ----------
+    variables:
+        The ``GraphVariables`` instance (must expose ``get_initializer`` and
+        ``get_initializer_value``).
+    input_name:
+        The ONNX input name that refers to the weight tensor.
+    op_name:
+        Human-readable operator name used in error messages (e.g. ``"LSTM"``).
+
+    Returns
+    -------
+    flat_values : list
+        1-D list of float values read from the initializer.
+    dims : list[int]
+        Shape of the tensor (length ≥ 1).
+
+    Raises
+    ------
+    ValueError
+        If the initializer is missing or its values cannot be read.
+    """
+    tensor = variables.get_initializer(input_name)
+    if tensor is None:
+        raise ValueError(
+            f"{op_name}: weight tensor {input_name!r} not found in initializers."
+        )
+    flat = variables.get_initializer_value(input_name)
+    if flat is None or not isinstance(flat, (list, tuple)):
+        raise ValueError(
+            f"{op_name}: weight values for {input_name!r} could not be read."
+        )
+    return list(flat), list(tensor.dims)
+
+
 def _write_sequence_outputs(
     variables: object,
     output_names: list[str],
@@ -50,5 +92,63 @@ def _write_sequence_outputs(
     if len(output_names) > 1 and output_names[1]:
         y_h_group = ValueVariablesGroup(
             {f"out_Yh_{h}": H_state[h] for h in range(H)}
+        )
+        variables[output_names[1]] = y_h_group
+
+
+def _write_bidir_sequence_outputs(
+    variables: object,
+    output_names: list[str],
+    all_H_fwd: list[list],
+    all_H_bwd: list[list],
+    H_state_fwd: list,
+    H_state_bwd: list,
+) -> None:
+    """Write Y and Y_h outputs for a bidirectional recurrent cell.
+
+    Parameters
+    ----------
+    variables:
+        The ``GraphVariables`` instance on which outputs are set.
+    output_names:
+        The list of ONNX output names from ``self.outputs``.
+    all_H_fwd:
+        ``all_H_fwd[t][h]`` — forward hidden state at timestep *t*, unit *h*.
+    all_H_bwd:
+        ``all_H_bwd[t][h]`` — backward hidden state **at timestep t** (already
+        re-aligned so that index *t* corresponds to time *t*, not processing order).
+    H_state_fwd:
+        Final forward hidden state ``H_state_fwd[h]``.
+    H_state_bwd:
+        Final backward hidden state ``H_state_bwd[h]``.
+    """
+    T = len(all_H_fwd)
+    H = len(H_state_fwd)
+
+    # Y: full sequence [seq_len, 2, batch, H]
+    if output_names and output_names[0]:
+        y_group = ValueVariablesGroup(
+            {
+                **{
+                    f"out_Y_{t}_0_{h}": all_H_fwd[t][h]
+                    for t in range(T)
+                    for h in range(H)
+                },
+                **{
+                    f"out_Y_{t}_1_{h}": all_H_bwd[t][h]
+                    for t in range(T)
+                    for h in range(H)
+                },
+            }
+        )
+        variables[output_names[0]] = y_group
+
+    # Y_h: [2, batch, H]
+    if len(output_names) > 1 and output_names[1]:
+        y_h_group = ValueVariablesGroup(
+            {
+                **{f"out_Yh_0_{h}": H_state_fwd[h] for h in range(H)},
+                **{f"out_Yh_1_{h}": H_state_bwd[h] for h in range(H)},
+            }
         )
         variables[output_names[1]] = y_h_group

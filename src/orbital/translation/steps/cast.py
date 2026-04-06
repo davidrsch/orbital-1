@@ -97,9 +97,10 @@ class CastLikeTranslator(Translator):
 
         # Assert that the first input is a dict (multiple concatenated columns).
         if not isinstance(expr, VariablesGroup):
-            # TODO: Support single variables as well.
-            #       This should be fairly straightforward to implement,
-            #       but there hasn't been the need for it yet.
+            # Known limitation: single-variable (non-group) CastLike is not yet
+            # implemented. All observed sklearn2onnx models use CastLike on column
+            # groups only. Single-variable support can be added when a concrete
+            # model requires it.
             raise NotImplementedError(
                 "CastLike currently only supports casting a group of columns."
             )
