@@ -24,7 +24,7 @@ https://onnx.ai/onnx/operators/onnx__ConvTranspose.html
 import ibis
 
 from ..translator import Translator
-from ..variables import NumericVariablesGroup, ValueVariablesGroup, VariablesGroup
+from ..variables import ValueVariablesGroup, VariablesGroup
 
 
 class ConvTransposeTranslator(Translator):

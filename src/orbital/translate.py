@@ -21,7 +21,8 @@ from .translation.steps.convtranspose import ConvTransposeTranslator
 from .translation.steps.gru import GRUTranslator
 from .translation.steps.lstm import LSTMTranslator
 from .translation.steps.clip import ClipTranslator
-from .translation.steps.concat import ConcatTranslator, FeatureVectorizerTranslator
+from .translation.steps.concat import ConcatTranslator
+from .translation.steps.featurevectorizer import FeatureVectorizerTranslator
 from .translation.steps.div import DivTranslator
 from .translation.steps.dropout import DropoutTranslator
 from .translation.steps.elu import EluTranslator

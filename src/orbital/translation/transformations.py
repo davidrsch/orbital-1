@@ -197,7 +197,10 @@ class TanhTransform(PostTransform):
         self, value: ibis.expr.types.NumericValue
     ) -> ibis.expr.types.NumericValue:
         """Apply tanh transformation to a single value."""
-        return value.tanh()
+        # tanh() is not available on ibis 12 NumericValue; use the
+        # equivalent exponential identity: (exp(2x) - 1) / (exp(2x) + 1).
+        e2x = (value * ibis.literal(2.0)).exp()
+        return (e2x - ibis.literal(1.0)) / (e2x + ibis.literal(1.0))
 
 
 # Mapping of transformation names to their corresponding classes
