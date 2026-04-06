@@ -401,3 +401,50 @@ class TestInstanceNormalization:
         dummy = torch.zeros(1, 6)
         onnx_model = _export_to_onnx(self.model, dummy)
         assert onnx_model is not None
+
+# ---------------------------------------------------------------------------
+# Test 9: BatchNorm → standalone Activation (Python #36)
+# ---------------------------------------------------------------------------
+
+
+class TestBatchNormFollowedByActivation:
+    """BatchNormalization followed by a standalone activation node — parity with PyTorch.
+
+    Verifies that orbital correctly dispatches each activation op after a
+    BatchNorm node, rather than treating it as a pass-through.
+    """
+
+    def _make_model(self, act_module: nn.Module) -> nn.Sequential:
+        return nn.Sequential(
+            nn.Linear(4, 8),
+            nn.BatchNorm1d(8),
+            act_module,
+            nn.Linear(8, 1),
+        )
+
+    def _run(self, model: nn.Sequential) -> None:
+        model.eval()
+        rng = np.random.default_rng(99)
+        X_np = rng.standard_normal((20, 4)).astype(np.float32)
+        X_df = _input_df(X_np)
+        features = _features_for(4)
+        dummy = torch.zeros(1, 4)
+        onnx_model = _export_to_onnx(model, dummy)
+        expected = _torch_predict(model, X_np)
+        sql_pred = _sql_predict_regression(onnx_model, features, X_df)
+        np.testing.assert_allclose(expected, sql_pred, rtol=1e-4, atol=1e-4)
+
+    def test_batchnorm_then_relu(self):
+        """BatchNorm1d → ReLU → Linear predictions match PyTorch."""
+        torch.manual_seed(99)
+        self._run(self._make_model(nn.ReLU()))
+
+    def test_batchnorm_then_hardsigmoid(self):
+        """BatchNorm1d → Hardsigmoid → Linear predictions match PyTorch."""
+        torch.manual_seed(99)
+        self._run(self._make_model(nn.Hardsigmoid()))
+
+    def test_batchnorm_then_hardswish(self):
+        """BatchNorm1d → Hardswish → Linear predictions match PyTorch."""
+        torch.manual_seed(99)
+        self._run(self._make_model(nn.Hardswish()))
