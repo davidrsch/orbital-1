@@ -19,9 +19,15 @@ class GRUTranslator(Translator):
     Limitations (raises :class:`NotImplementedError` otherwise):
     - Forward direction only (``direction="forward"``).
     - Default activations only (Sigmoid/Tanh).
-    - Linear-before-reset gate order (ONNX default; ``linear_before_reset=0``).
     - Sequence length ``T`` must be statically recoverable from the input
       group size (``len(X_group) // input_size``).
+
+    Both ``linear_before_reset=0`` (default) and ``linear_before_reset=1``
+    are supported.
+
+    ``linear_before_reset=1`` gate equation (h gate only differs)::
+
+        h_t = tanh(X_t @ Wh.T + r_t ⊙ (H_{t-1} @ Rh.T + Rbh) + Wbh)
 
     ONNX gate order (ZRH):
     - z gate (update) → rows ``[0 : H]``
@@ -65,9 +71,10 @@ class GRUTranslator(Translator):
             )
 
         linear_before_reset = int(self._attributes.get("linear_before_reset", 0))
-        if linear_before_reset != 0:
+        if linear_before_reset not in (0, 1):
             raise NotImplementedError(
-                "GRU: linear_before_reset=1 is not supported."
+                f"GRU: linear_before_reset={linear_before_reset!r} is not supported; "
+                "must be 0 or 1."
             )
 
         hidden_size = int(self._attributes["hidden_size"])
@@ -134,8 +141,17 @@ class GRUTranslator(Translator):
         def _run_direction(
             d: int,
             x_seq: list,
+            lbr: int = 0,
         ) -> tuple[list, list]:
-            """Unroll one GRU direction; returns (all_H, H_state)."""
+            """Unroll one GRU direction; returns (all_H, H_state).
+
+            Parameters
+            ----------
+            lbr:
+                ``linear_before_reset`` attribute (0 or 1).  When 1 the reset
+                gate is applied *after* the recurrent linear transform of the
+                previous hidden state (ONNX ``linear_before_reset`` semantics).
+            """
             w_off = d * W_DIR
             r_off = d * R_DIR
             b_off = d * B_DIR
@@ -185,20 +201,44 @@ class GRUTranslator(Translator):
                 z_gate = [_sigmoid(v) for v in pre_z]
                 r_gate = [_sigmoid(v) for v in pre_r]
 
-                pre_h = [
-                    self._optimizer.fold_operation(
-                        sum(
-                            [x_t[i] * w_val(self._GATE_H, h, i) for i in range(I)]
-                            + [
-                                (r_gate[hid] * H_st[hid]) * r_val(self._GATE_H, h, hid)
-                                for hid in range(H)
-                            ]
+                if lbr == 0:
+                    # Default (linear_before_reset=0):
+                    # h_t = tanh(X_t*Wh^T + (r_t ⊙ H_prev)*Rh^T + Wbh + Rbh)
+                    pre_h = [
+                        self._optimizer.fold_operation(
+                            sum(
+                                [x_t[i] * w_val(self._GATE_H, h, i) for i in range(I)]
+                                + [
+                                    (r_gate[hid] * H_st[hid]) * r_val(self._GATE_H, h, hid)
+                                    for hid in range(H)
+                                ]
+                            )
+                            + bias_in(self._GATE_H, h)
+                            + bias_rec(self._GATE_H, h)
                         )
-                        + bias_in(self._GATE_H, h)
-                        + bias_rec(self._GATE_H, h)
-                    )
-                    for h in range(H)
-                ]
+                        for h in range(H)
+                    ]
+                else:
+                    # linear_before_reset=1:
+                    # h_t = tanh(X_t*Wh^T + r_t ⊙ (H_prev*Rh^T + Rbh) + Wbh)
+                    rec_h = [
+                        self._optimizer.fold_operation(
+                            sum(
+                                H_st[hid] * r_val(self._GATE_H, h, hid)
+                                for hid in range(H)
+                            )
+                            + bias_rec(self._GATE_H, h)
+                        )
+                        for h in range(H)
+                    ]
+                    pre_h = [
+                        self._optimizer.fold_operation(
+                            sum(x_t[i] * w_val(self._GATE_H, h, i) for i in range(I))
+                            + r_gate[h] * rec_h[h]
+                            + bias_in(self._GATE_H, h)
+                        )
+                        for h in range(H)
+                    ]
 
                 h_tilde = [_tanh(v) for v in pre_h]
 
@@ -218,13 +258,13 @@ class GRUTranslator(Translator):
         # ── Run direction(s) ──────────────────────────────────────────────
         outputs = self.outputs  # may have 1 or 2 entries; some may be ""
 
-        all_H_fwd, H_state_fwd = _run_direction(0, x_exprs)
+        all_H_fwd, H_state_fwd = _run_direction(0, x_exprs, linear_before_reset)
 
         if direction == "bidirectional":
             x_bwd: list = []
             for t in reversed(range(T)):
                 x_bwd.extend(x_exprs[t * I : (t + 1) * I])
-            all_H_bwd_rev, H_state_bwd = _run_direction(1, x_bwd)
+            all_H_bwd_rev, H_state_bwd = _run_direction(1, x_bwd, linear_before_reset)
             all_H_bwd = list(reversed(all_H_bwd_rev))
             _write_bidir_sequence_outputs(
                 self._variables, outputs,

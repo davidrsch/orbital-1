@@ -8,6 +8,7 @@ import sys
 # dynamic_class_creation() in skl2onnx/algebra/onnx_ops.py triggers a
 # Windows access violation when executed through pytest's import machinery.
 import orbital  # noqa: F401 – side-effect pre-load
+from orbital.translation.optimizer import Optimizer
 
 import duckdb
 import sqlalchemy
@@ -51,6 +52,13 @@ def pytest_configure(config):
 
 
 # Shared fixtures for all test files
+@pytest.fixture(scope="class", autouse=True)
+def _no_op_optimizer(request):
+    """Provide a disabled Optimizer as a class attribute for translator tests."""
+    if request.cls is not None:
+        request.cls.optimizer = Optimizer(enabled=False)
+
+
 @pytest.fixture(scope="class")
 def iris_data():
     """Load and prepare the iris dataset for testing."""

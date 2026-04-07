@@ -14,7 +14,8 @@ from .translation.steps.argmax import ArgMaxTranslator
 from .translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 from .translation.steps.avgpool import AveragePoolTranslator
 from .translation.steps.batchnorm import BatchNormalizationTranslator
-from .translation.steps.cast import CastLikeTranslator, CastTranslator
+from .translation.steps.cast import CastTranslator
+from .translation.steps.castlike import CastLikeTranslator
 from .translation.steps.celu import CeluTranslator
 from .translation.steps.conv import ConvTranslator
 from .translation.steps.convtranspose import ConvTransposeTranslator
@@ -86,7 +87,8 @@ from .translation.steps.softmax import SoftmaxTranslator
 from .translation.steps.softplus import SoftplusTranslator
 from .translation.steps.softsign import SoftsignTranslator
 from .translation.steps.sqrt import SqrtTranslator
-from .translation.steps.squeeze import SqueezeTranslator, UnsqueezeTranslator
+from .translation.steps.squeeze import SqueezeTranslator
+from .translation.steps.unsqueeze import UnsqueezeTranslator
 from .translation.steps.sub import SubTranslator
 from .translation.steps.swish import SwishTranslator
 from .translation.steps.tanh import TanhTranslator
