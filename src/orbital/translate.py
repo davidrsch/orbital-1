@@ -46,10 +46,12 @@ from .translation.steps.instancenorm import InstanceNormalizationTranslator
 from .translation.steps.labelencoder import LabelEncoderTranslator
 from .translation.steps.layernorm import LayerNormalizationTranslator
 from .translation.steps.leakyrelu import LeakyReluTranslator
-from .translation.steps.linearclass import LinearClassifierTranslator
-from .translation.steps.linearreg import LinearRegressorTranslator
+from .translation.steps.localresponsenormalization import LRNTranslator
 from .translation.steps.logsigmoid import LogSigmoidTranslator
 from .translation.steps.logsoftmax import LogSoftmaxTranslator
+from .translation.steps.lpnormalization import LpNormalizationTranslator
+from .translation.steps.linearclass import LinearClassifierTranslator
+from .translation.steps.linearreg import LinearRegressorTranslator
 from .translation.steps.matmul import MatMulTranslator
 from .translation.steps.maxpool import MaxPoolTranslator
 from .translation.steps.mish import MishTranslator
@@ -71,6 +73,7 @@ from .translation.steps.reducel1 import ReduceL1Translator
 from .translation.steps.reducel2 import ReduceL2Translator
 from .translation.steps.reducelogsum import ReduceLogSumTranslator
 from .translation.steps.reducesumsquare import ReduceSumSquareTranslator
+from .translation.steps.reduceprod import ReduceProdTranslator
 from .translation.steps.relu import ReluTranslator
 from .translation.steps.reshape import ReshapeTranslator
 from .translation.steps.rmsnorm import RMSNormalizationTranslator
@@ -137,6 +140,8 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "HardTanh": HardTanhTranslator,
     "InstanceNormalization": InstanceNormalizationTranslator,
     "LayerNormalization": LayerNormalizationTranslator,
+    "LpNormalization": LpNormalizationTranslator,
+    "LRN": LRNTranslator,
     "LeakyRelu": LeakyReluTranslator,
     "LogSigmoid": LogSigmoidTranslator,
     "Sub": SubTranslator,
@@ -161,6 +166,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "ReduceMean": ReduceMeanTranslator,
     "ReduceMin": ReduceMinTranslator,
     "ReduceSum": ReduceSumTranslator,
+    "ReduceProd": ReduceProdTranslator,
     "RNN": RNNTranslator,
     "Sign": SignTranslator,
     "Shrink": ShrinkTranslator,

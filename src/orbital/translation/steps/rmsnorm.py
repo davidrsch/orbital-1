@@ -15,24 +15,19 @@ https://onnx.ai/onnx/operators/onnx__RMSNormalization.html
 
 import ibis
 
-from ..translator import Translator
+from ._base_norm import NormTranslatorBase
 from ..variables import NumericVariablesGroup, VariablesGroup
 
 
-class RMSNormalizationTranslator(Translator):
+class RMSNormalizationTranslator(NormTranslatorBase):
     """Translate the ONNX RMSNormalization operator (opset 23+)."""
 
     def process(self) -> None:
         """Translate the RMSNormalization node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
-        epsilon = float(self._attributes.get("epsilon", 1e-5))
-
-        scale = self._variables.get_initializer_value(self.inputs[1])
-
-        if not isinstance(scale, (list, tuple)):
-            raise ValueError(
-                "RMSNormalization: scale (inputs[1]) must be a constant initializer."
-            )
+        scale, _, epsilon = self._extract_scale_bias_epsilon(
+            bias_idx=None, op_name="RMSNormalization"
+        )
 
         if not isinstance(data, VariablesGroup):
             raise ValueError(

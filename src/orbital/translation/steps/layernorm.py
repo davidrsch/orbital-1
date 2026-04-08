@@ -17,26 +17,20 @@ https://onnx.ai/onnx/operators/onnx__LayerNormalization.html
 
 import ibis
 
-from ..translator import Translator
+from ._base_norm import NormTranslatorBase
 from ..variables import NumericVariablesGroup, VariablesGroup
 
 
-class LayerNormalizationTranslator(Translator):
+class LayerNormalizationTranslator(NormTranslatorBase):
     """Translate the ONNX LayerNormalization operator (opset 17+)."""
 
     def process(self) -> None:
         """Translate the LayerNormalization node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
-        epsilon = float(self._attributes.get("epsilon", 1e-5))
-
-        scale = self._variables.get_initializer_value(self.inputs[1])
-        bias_input = self.inputs[2] if len(self.inputs) > 2 else None
-        bias = self._variables.get_initializer_value(bias_input) if bias_input else None
-
-        if not isinstance(scale, (list, tuple)):
-            raise ValueError(
-                "LayerNormalization: scale (inputs[1]) must be a constant initializer."
-            )
+        # bias_idx=2 with optional presence — base class guards via len(self.inputs)
+        scale, bias, epsilon = self._extract_scale_bias_epsilon(
+            op_name="LayerNormalization"
+        )
 
         if not isinstance(data, VariablesGroup):
             raise ValueError(

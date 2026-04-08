@@ -834,6 +834,55 @@ class TestMultiHeadAttentionTranslator:
         assert isinstance(result, ValueVariablesGroup)
         assert len(result) == T_q * D
 
+    def test_multiheadattention_cross_attention_different_value_dim(self):
+        """After the BUG-4 fix, D_v is inferred from V columns, not set equal to D."""
+        from orbital.translation.steps.multiheadattention import (
+            MultiHeadAttentionTranslator,
+        )
+
+        # Q: T_q=2 timesteps, D=8 features
+        # K: T_k=3 timesteps, D=8 features
+        # V: T_k=3 timesteps, D_v=4 features (D_v != D)
+        # D supplied via hidden_size attribute so D_v inference from V shape is exercised.
+        T_q, T_k, D, D_v, num_heads = 2, 3, 8, 4, 2
+        node = helper.make_node(
+            "MultiHeadAttention",
+            inputs=["Q", "K", "V"],
+            outputs=["output"],
+            domain="com.microsoft",
+            num_heads=num_heads,
+            hidden_size=D,
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("Q", TensorProto.FLOAT, [None, T_q * D])],
+            [
+                helper.make_tensor_value_info(
+                    "output", TensorProto.FLOAT, [None, T_q * D_v]
+                )
+            ],
+            [],
+        )
+
+        q_cols = {f"q{i}": [float(i % 4) / 4.0] for i in range(T_q * D)}
+        k_cols = {f"k{i}": [float(i % 4) / 4.0] for i in range(T_k * D)}
+        v_cols = {f"v{i}": [float(i % 2) / 2.0] for i in range(T_k * D_v)}
+        table = ibis.memtable({**q_cols, **k_cols, **v_cols})
+
+        variables = GraphVariables(ibis.memtable({"Q": [0.0]}), graph)
+        variables["Q"] = ValueVariablesGroup({k: table[k] for k in q_cols})
+        variables["K"] = ValueVariablesGroup({k: table[k] for k in k_cols})
+        variables["V"] = ValueVariablesGroup({k: table[k] for k in v_cols})
+
+        MultiHeadAttentionTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("output")
+        assert isinstance(result, ValueVariablesGroup)
+        # BUG-4 fix: output has T_q * D_v = 2 * 4 = 8 columns, not T_q * D = 2 * 8 = 16
+        assert len(result) == T_q * D_v
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: AttentionTranslator
@@ -963,6 +1012,41 @@ class TestAttentionTranslator:
         variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
         variables["X"] = x_group
         with pytest.raises(NotImplementedError, match="mask_index"):
+            AttentionTranslator(
+                table, graph.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()
+
+    def test_attention_past_input_raises_not_implemented(self):
+        """Attention: providing a past KV-state input (input[4]) must raise NotImplementedError."""
+        from orbital.translation.steps.attention import AttentionTranslator
+
+        T, I_size, H, num_heads = 1, 2, 2, 1
+        w_flat = [0.0] * (I_size * 3 * H)
+        # input[2]=bias absent, input[3]=mask_index absent, input[4]=past present
+        past_tensor = helper.make_tensor("past", TensorProto.FLOAT, [1], [0.0])
+        node = helper.make_node(
+            "Attention",
+            inputs=["X", "W", "", "", "past"],
+            outputs=["output"],
+            domain="com.microsoft",
+            num_heads=num_heads,
+        )
+        inits = [
+            helper.make_tensor("W", TensorProto.FLOAT, [I_size, 3 * H], w_flat),
+            past_tensor,
+        ]
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, T * I_size])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, T * H])],
+            inits,
+        )
+        cols = {"x0": [1.0], "x1": [2.0]}
+        table = ibis.memtable(cols)
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({k: table[k] for k in cols})
+
+        with pytest.raises(NotImplementedError, match=r"past \(input\[4\]\)"):
             AttentionTranslator(
                 table, graph.node[0], variables, self.optimizer, TranslationOptions()
             ).process()

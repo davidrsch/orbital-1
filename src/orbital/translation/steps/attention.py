@@ -104,7 +104,10 @@ class AttentionTranslator(Translator):
             raise NotImplementedError(
                 "Attention: mask_index (input[3]) is not supported."
             )
-
+        if len(self.inputs) > 4 and bool(self.inputs[4]):
+            raise NotImplementedError("Attention: past (input[4]) is not supported.")
+        if len(self.inputs) > 5 and bool(self.inputs[5]):
+            raise NotImplementedError("Attention: attention_bias (input[5]) is not supported.")
         # w_flat layout: [I, 3*H] in row-major order.
         # w_flat[i * 3*H + j] = weight[i, j]
         # Q slice: j in [0, H), K slice: j in [H, 2H), V slice: j in [2H, 3H)

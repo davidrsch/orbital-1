@@ -4,11 +4,11 @@ import typing
 
 import ibis
 
-from ..translator import Translator
+from ._base_norm import NormTranslatorBase
 from ..variables import NumericVariablesGroup, VariablesGroup
 
 
-class BatchNormalizationTranslator(Translator):
+class BatchNormalizationTranslator(NormTranslatorBase):
     """Translate the ONNX BatchNormalization operator (inference mode)."""
 
     def process(self) -> None:
@@ -17,19 +17,16 @@ class BatchNormalizationTranslator(Translator):
         # Inference mode only (5 inputs: X, scale γ, bias β, running_mean μ, running_var σ²)
         # y_i = ((x_i - mean_i) / sqrt(var_i + eps)) * scale_i + bias_i
         data = self._variables.consume(self.inputs[0])
-        epsilon = float(self._attributes.get("epsilon", 1e-5))
+        scale, bias, epsilon = self._extract_scale_bias_epsilon(
+            op_name="BatchNormalization"
+        )
 
-        scale = self._variables.get_initializer_value(self.inputs[1])
-        bias = self._variables.get_initializer_value(self.inputs[2])
+        if bias is None:
+            raise ValueError("BatchNormalization: bias must be a constant initializer.")
+
         mean = self._variables.get_initializer_value(self.inputs[3])
         var = self._variables.get_initializer_value(self.inputs[4])
 
-        if not isinstance(scale, (list, tuple)):
-            raise ValueError(
-                "BatchNormalization: scale must be a constant initializer."
-            )
-        if not isinstance(bias, (list, tuple)):
-            raise ValueError("BatchNormalization: bias must be a constant initializer.")
         if not isinstance(mean, (list, tuple)):
             raise ValueError("BatchNormalization: mean must be a constant initializer.")
         if not isinstance(var, (list, tuple)):

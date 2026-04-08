@@ -68,13 +68,9 @@ class MultiHeadAttentionTranslator(Translator):
                 )
             bias_flat = [float(x) for x in bias_flat_raw]
             # bias layout: [Q_bias (D) | K_bias (D) | V_bias (D_v)]
-            # For self-attention (common): D == D_v → bias_size = 3*D
-            # Accept both 3*D (self-attn) and D+D+D_v (cross-attn, D == D_v assumed).
-            if len(bias_flat) % 3 != 0:
-                raise ValueError(
-                    f"MultiHeadAttention: bias size {len(bias_flat)} must be "
-                    "divisible by 3 (Q_bias + K_bias + V_bias of equal size)."
-                )
+            # Provisional D: assume self-attention (D_v == D) so bias_size = 3*D.
+            # The exact validation len(bias_flat) == 2*D + D_v is done after D_v
+            # is inferred from the value sequence below.
             D = len(bias_flat) // 3
         else:
             d_attr = self._attributes.get("hidden_size", None)
@@ -95,7 +91,14 @@ class MultiHeadAttentionTranslator(Translator):
         T_q = len(q_exprs) // D
         T_k = len(k_exprs) // D if len(k_exprs) % D == 0 else len(k_exprs)
         T_v = len(v_exprs) // D if len(v_exprs) % D == 0 else len(v_exprs)
-        D_v = D  # value feature size per position (same as D for self-attention)
+        # value feature size per position: infer from V column count
+        D_v = len(v_exprs) // T_k if len(v_exprs) % T_k == 0 else D
+
+        if has_bias and bias_flat is not None and len(bias_flat) != 2 * D + D_v:
+            raise ValueError(
+                f"MultiHeadAttention: bias size {len(bias_flat)} must equal "
+                f"2*D + D_v = 2*{D} + {D_v} = {2 * D + D_v}."
+            )
 
         if D % num_heads != 0:
             raise ValueError(

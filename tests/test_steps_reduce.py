@@ -443,3 +443,67 @@ class TestReduceSumSquareTranslator:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Unit tests: ReduceProdTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestReduceProdTranslator:
+    """Tests for ReduceProdTranslator."""
+
+    def test_reduceprod_registered(self):
+        from orbital.translation.steps.reduceprod import ReduceProdTranslator
+        assert TRANSLATORS.get("ReduceProd") is ReduceProdTranslator
+
+    def test_reduceprod_group_to_scalar(self):
+        """ReduceProd across feature columns returns row-wise product (keepdims=0)."""
+        table = ibis.memtable({"a": [2.0, 3.0], "b": [5.0, 4.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceProd <axes: ints = [-1], keepdims: int = 0> (x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.reduceprod import ReduceProdTranslator
+        t = ReduceProdTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        # Row 0: 2.0 * 5.0 = 10.0; Row 1: 3.0 * 4.0 = 12.0
+        assert result == [10.0, 12.0]
+
+    def test_reduceprod_keepdims(self):
+        """ReduceProd with keepdims=1 returns a VariablesGroup with one output column."""
+        table = ibis.memtable({"a": [2.0], "b": [3.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceProd <axes: ints = [-1], keepdims: int = 1> (x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.reduceprod import ReduceProdTranslator
+        t = ReduceProdTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        result = variables.peek_variable("output")
+        backend = ibis.duckdb.connect()
+        val = list(backend.execute(result["out_0"]))[0]
+        # 2.0 * 3.0 = 6.0
+        assert abs(val - 6.0) < 1e-9
+
+    def test_reduceprod_unsupported_axis_raises(self):
+        """ReduceProd on batch axis (0) should raise NotImplementedError."""
+        table = ibis.memtable({"x": [1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceProd <axes: ints = [0]> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.reduceprod import ReduceProdTranslator
+        t = ReduceProdTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        with pytest.raises(NotImplementedError, match="axis"):
+            t.process()

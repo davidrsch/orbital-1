@@ -4,12 +4,11 @@ Normalises the input tensor element-wise using per-row mean and variance:
 
     mean  = (1/C) * sum_c x_c
     var   = (1/C) * sum_c (x_c - mean)^2
-    y_c   = (x_c - mean) / sqrt(var + epsilon)
+    y_c   = (x_c - mean) / sqrt(var)
 
-The ``epsilon`` attribute is read from the node; the ONNX spec default is
-``1e-5``.  Only normalisation over the feature axis (all columns in a
-VariablesGroup) is supported; the ONNX ``axes`` attribute is accepted only when
-it reduces to feature-axis normalisation.
+Only normalisation over the feature axis (all columns in a VariablesGroup) is
+supported; the ONNX ``axes`` attribute must be absent (default all-axes
+normalisation).
 
 References
 ----------
@@ -26,7 +25,16 @@ class MeanVarianceNormalizationTranslator(Translator):
 
     def process(self) -> None:
         """Translate the MeanVarianceNormalization node."""
-        epsilon: float = float(self._attributes.get("epsilon", 1e-5))
+        axes = self._attributes.get("axes", None)
+        if axes is not None:
+            # ONNX default is axes=[0, 2, 3] for NCHW; only last-axis normalisation is supported
+            # Check if axes is equivalent to normalising ALL non-batch dims except the feature axis
+            # For 2D input (batch, features), only axes=[0] would be non-standard; default is fine.
+            # Raise for any explicit axes specification that is not None (conservative).
+            raise NotImplementedError(
+                f"MeanVarianceNormalization: axes={axes} is not supported; "
+                "only default (all axes) normalisation is supported."
+            )
         data = self._variables.consume(self.inputs[0])
 
         if not isinstance(data, VariablesGroup):
@@ -50,7 +58,7 @@ class MeanVarianceNormalizationTranslator(Translator):
             var_expr = var_expr + t
         var_expr = var_expr / ibis.literal(float(n))
 
-        std_expr = (var_expr + ibis.literal(epsilon)) ** ibis.literal(0.5)
+        std_expr = var_expr ** ibis.literal(0.5)
 
         result = NumericVariablesGroup(
             {

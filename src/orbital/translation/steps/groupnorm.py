@@ -17,27 +17,22 @@ https://onnx.ai/onnx/operators/onnx__GroupNormalization.html
 
 import ibis
 
-from ..translator import Translator
+from ._base_norm import NormTranslatorBase
 from ..variables import NumericVariablesGroup, VariablesGroup
 
 
-class GroupNormalizationTranslator(Translator):
+class GroupNormalizationTranslator(NormTranslatorBase):
     """Translate the ONNX GroupNormalization operator."""
 
     def process(self) -> None:
         """Translate the GroupNormalization node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
-        epsilon = float(self._attributes.get("epsilon", 1e-5))
         num_groups = int(self._attributes.get("num_groups", 1))
+        scale, bias, epsilon = self._extract_scale_bias_epsilon(
+            op_name="GroupNormalization"
+        )
 
-        scale = self._variables.get_initializer_value(self.inputs[1])
-        bias = self._variables.get_initializer_value(self.inputs[2])
-
-        if not isinstance(scale, (list, tuple)):
-            raise ValueError(
-                "GroupNormalization: scale must be a constant initializer."
-            )
-        if not isinstance(bias, (list, tuple)):
+        if bias is None:
             raise ValueError("GroupNormalization: bias must be a constant initializer.")
 
         if not isinstance(data, VariablesGroup):

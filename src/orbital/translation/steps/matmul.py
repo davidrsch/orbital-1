@@ -1,4 +1,4 @@
-"""Implementation of the LabelEncoder operator."""
+"""Implementation of the MatMul operator."""
 
 import typing
 

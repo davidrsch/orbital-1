@@ -17,26 +17,21 @@ https://onnx.ai/onnx/operators/onnx__InstanceNormalization.html
 
 import ibis
 
-from ..translator import Translator
+from ._base_norm import NormTranslatorBase
 from ..variables import NumericVariablesGroup, VariablesGroup
 
 
-class InstanceNormalizationTranslator(Translator):
+class InstanceNormalizationTranslator(NormTranslatorBase):
     """Translate the ONNX InstanceNormalization operator."""
 
     def process(self) -> None:
         """Translate the InstanceNormalization node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
-        epsilon = float(self._attributes.get("epsilon", 1e-5))
+        scale, bias, epsilon = self._extract_scale_bias_epsilon(
+            op_name="InstanceNormalization"
+        )
 
-        scale = self._variables.get_initializer_value(self.inputs[1])
-        bias = self._variables.get_initializer_value(self.inputs[2])
-
-        if not isinstance(scale, (list, tuple)):
-            raise ValueError(
-                "InstanceNormalization: scale must be a constant initializer."
-            )
-        if not isinstance(bias, (list, tuple)):
+        if bias is None:
             raise ValueError(
                 "InstanceNormalization: bias must be a constant initializer."
             )

@@ -7,7 +7,10 @@ from orbital.translation.optimizer import Optimizer
 
 
 class TestOptimizerFold:
-    optimizer = Optimizer()
+    @pytest.fixture(autouse=True)
+    def _no_op_optimizer(self):
+        """Override conftest autouse: this class needs an *enabled* optimizer."""
+        self.optimizer = Optimizer()
 
     def test_fold_sum_only_literals(self):
         result = self.optimizer.fold_contiguous_sum(
