@@ -4,16 +4,11 @@ import typing
 
 import ibis
 
-from orbital.translation.variables import (
-    NumericVariablesGroup,
-    ValueVariablesGroup,
-    VariablesGroup,
-)
-
-from ..translator import Translator
+from ..variables import VariablesGroup
+from ._base_binary_elementwise import BinaryElementwiseTranslator
 
 
-class SubTranslator(Translator):
+class SubTranslator(BinaryElementwiseTranslator):
     """Processes a Sub node and updates the variables with the output expression.
 
     Given the node to translate, the variables and constants available for
@@ -21,6 +16,13 @@ class SubTranslator(Translator):
     the input variables and produces a new output variable that computes
     based on the Sub operation.
     """
+
+    def _op(
+        self,
+        a: ibis.expr.types.NumericValue,
+        b: ibis.expr.types.NumericValue,
+    ) -> ibis.expr.types.NumericValue:
+        return a - b
 
     def process(self) -> None:
         """Performs the translation and set the output variable."""
@@ -35,42 +37,7 @@ class SubTranslator(Translator):
         if isinstance(first_raw, (ibis.Expr, VariablesGroup)) and isinstance(
             second_raw, (list, tuple)
         ):
-            first_operand = first_raw
-            sub_values = list(second_raw)
-            type_check_var = first_operand
-            if isinstance(type_check_var, VariablesGroup):
-                type_check_var = next(iter(type_check_var.values()), None)
-            if not isinstance(type_check_var, ibis.expr.types.NumericValue):
-                raise ValueError("Sub: The first operand must be a numeric value.")
-            if isinstance(first_operand, VariablesGroup):
-                first_operand = NumericVariablesGroup(first_operand)
-                struct_fields = list(first_operand.keys())
-                if len(sub_values) != len(struct_fields):
-                    raise ValueError(
-                        f"Sub: initializer has {len(sub_values)} values but "
-                        f"the variable group has {len(struct_fields)} fields."
-                    )
-                self.set_output(
-                    ValueVariablesGroup(
-                        {
-                            field: self._optimizer.fold_operation(
-                                first_operand[field] - sub_values[i]
-                            )
-                            for i, field in enumerate(struct_fields)
-                        }
-                    )
-                )
-            else:
-                if len(sub_values) != 1:
-                    raise ValueError(
-                        "When the first operand is a single column, the second operand must contain exactly 1 value"
-                    )
-                self.set_output(
-                    self._optimizer.fold_operation(
-                        typing.cast(ibis.expr.types.NumericValue, first_operand)
-                        - sub_values[0]
-                    )
-                )
+            self._process_var_const(first_raw, list(second_raw))
 
         # Case 2: constant - variable  (e.g., "1 - sigmoid(x)" in binary MLP classifier)
         elif isinstance(first_raw, (list, tuple)) and isinstance(second_raw, ibis.Expr):
@@ -96,41 +63,7 @@ class SubTranslator(Translator):
         elif isinstance(first_raw, (ibis.Expr, VariablesGroup)) and isinstance(
             second_raw, (ibis.Expr, VariablesGroup)
         ):
-            if isinstance(first_raw, VariablesGroup) and isinstance(
-                second_raw, VariablesGroup
-            ):
-                f_keys = list(first_raw.keys())
-                s_vals = list(second_raw.values())
-                if len(f_keys) != len(s_vals):
-                    raise ValueError(
-                        f"Sub: both variable operands must have the same number of columns ({len(f_keys)} vs {len(s_vals)})"
-                    )
-                first_num = NumericVariablesGroup(first_raw)
-                second_num = NumericVariablesGroup(
-                    {k: v for k, v in zip(f_keys, s_vals)}
-                )
-                self.set_output(
-                    ValueVariablesGroup(
-                        {
-                            k: self._optimizer.fold_operation(
-                                first_num[k] - second_num[k]
-                            )
-                            for k in f_keys
-                        }
-                    )
-                )
-            elif isinstance(first_raw, ibis.Expr) and isinstance(second_raw, ibis.Expr):
-                self.set_output(
-                    self._optimizer.fold_operation(
-                        typing.cast(ibis.expr.types.NumericValue, first_raw)
-                        - typing.cast(ibis.expr.types.NumericValue, second_raw)
-                    )
-                )
-            else:
-                raise ValueError(
-                    "Sub: both variable operands must be the same type "
-                    "(both a column group or both a single column)."
-                )
+            self._process_var_var(first_raw, second_raw)
 
         elif not isinstance(
             first_raw, (ibis.Expr, VariablesGroup, list, tuple, int, float)

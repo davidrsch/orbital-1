@@ -8,7 +8,7 @@ from ..translator import Translator
 from ..variables import NumericVariablesGroup, VariablesGroup
 
 # ONNX-specified default constants for SELU
-_SELU_ALPHA = 1.6732631921768192  # ONNX spec canonical value
+_SELU_ALPHA = 1.6732631921768192  # float32 approximation of ONNX spec alpha (1.6732632423543772)
 _SELU_GAMMA = 1.0507009873554805
 
 

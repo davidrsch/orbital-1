@@ -17,6 +17,7 @@ from .tanh import _tanh
 
 _SQRT_2 = math.sqrt(2.0)
 _SQRT_2_OVER_PI = math.sqrt(2.0 / math.pi)
+_GELU_COEFF = 0.044715  # tanh-approximation coefficient from Hendrycks & Gimpel 2016
 
 
 class GeluTranslator(Translator):
@@ -38,7 +39,7 @@ class GeluTranslator(Translator):
         def _gelu(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
             if approximate == "tanh":
                 inner = ibis.literal(_SQRT_2_OVER_PI) * (
-                    v + ibis.literal(0.044715) * v ** ibis.literal(3.0)
+                    v + ibis.literal(_GELU_COEFF) * v ** ibis.literal(3.0)
                 )
                 return ibis.literal(0.5) * v * (ibis.literal(1.0) + _tanh(inner))
             else:

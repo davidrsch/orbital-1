@@ -63,21 +63,23 @@ class ArgMaxTranslator(Translator):
 
         # Generate a CASE THEN ELSE expression to find
         # which out of all the columns has the maximum value.
+        # When select_last_index=1, iterate in reverse so that the first
+        # column that is >= all others (scanned right-to-left) is the last
+        # tied maximum.  For select_last_index=0 iterate forward.
+        iteration = (
+            list(reversed(list(enumerate(keys))))
+            if select_last_index
+            else list(enumerate(keys))
+        )
         cases: list[tuple[ibis.Expr, int]] = []
-        for idx, key in enumerate(keys):
+        for idx, key in iteration:
             cond = None
-            # Compare the current column with all other columns
+            # Compare the current column against every other column.
             for j, other in enumerate(keys):
                 if j == idx:
-                    # Do not compare to yourself.
                     continue
-                # When select_last_index is True
-                # We use '>', otherwise '>=' so that we can pick the first occurrence.
-                cmp_expr = (
-                    data[key] > data[other]
-                    if select_last_index
-                    else data[key] >= data[other]
-                )
+                # Use >= for both modes so conditions are satisfiable on ties.
+                cmp_expr = data[key] >= data[other]
                 cond = cmp_expr if cond is None else cond & cmp_expr
             cases.append((cond, idx))
         argmax_expr = ibis.cases(*cases, else_=0)

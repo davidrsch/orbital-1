@@ -4,11 +4,11 @@ import typing
 
 import ibis
 
-from ..translator import Translator
 from ..variables import NumericVariablesGroup, ValueVariablesGroup, VariablesGroup
+from ._base_binary_elementwise import BinaryElementwiseTranslator
 
 
-class DivTranslator(Translator):
+class DivTranslator(BinaryElementwiseTranslator):
     """Processes a Div node and updates the variables with the output expression.
 
     This class is responsible for handling the division operation in the
@@ -24,14 +24,21 @@ class DivTranslator(Translator):
     value in the list.
     """
 
+    def _op(
+        self,
+        a: ibis.expr.types.NumericValue,
+        b: ibis.expr.types.NumericValue,
+    ) -> ibis.expr.types.NumericValue:
+        return a / b
+
     def process(self) -> None:
         """Performs the translation and set the output variable."""
         # https://onnx.ai/onnx/operators/onnx__Div.html
 
-        first_operand = self._variables.consume(self.inputs[0])
+        first_operand = self._variables.consume(self._inputs[0])
         # Try constant initializer; fall back to a variable for
         # element-wise variable÷variable division.
-        second_arg = self._variables.consume(self.inputs[1])
+        second_arg = self._variables.consume(self._inputs[1])
         if second_arg is None or not isinstance(second_arg, (list, tuple, ibis.Expr, VariablesGroup)):
             raise NotImplementedError(
                 "Div: Second input (divisor) must be a constant list or a variable column/group."
