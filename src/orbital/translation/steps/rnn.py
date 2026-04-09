@@ -47,12 +47,17 @@ class RNNTranslator(Translator):
             )
 
         activations = self._attributes.get("activations", None)
-        if activations and list(activations) not in (
-            ["Tanh"],
-            ["tanh"],
-        ):
+        act_list = list(activations) if activations else ["Tanh"]
+        if act_list in (["Tanh"], ["tanh"]):
+            def _act_fn(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
+                return _tanh(v)
+        elif act_list in (["Relu"], ["relu"]):
+            def _act_fn(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:  # type: ignore[misc]
+                return ibis.greatest(v, ibis.literal(0.0))
+        else:
             raise NotImplementedError(
-                "RNN: only the default activation [Tanh] is supported."
+                f"RNNTranslator: activation '{act_list[0]}' is not supported; "
+                "only 'Tanh' and 'Relu' are supported"
             )
 
         hidden_size = int(self._attributes["hidden_size"])
@@ -155,7 +160,7 @@ class RNNTranslator(Translator):
                     for h in range(H)
                 ]
 
-                new_H = [_tanh(v) for v in pre_h]
+                new_H = [_act_fn(v) for v in pre_h]
                 H_st = new_H
                 all_H_dir.append(new_H)
 

@@ -1,6 +1,7 @@
 """Shared base class for ONNX Reduce* axis-reduction translators."""
 
 from ..translator import Translator
+from ..variables import ValueVariablesGroup
 
 
 class _ReduceAxisTranslator(Translator):
@@ -52,3 +53,19 @@ class _ReduceAxisTranslator(Translator):
             return None
 
         return data, keepdims
+
+    def _set_reduce_output(self, agg, keepdims: int) -> None:
+        """Write result: wrap *agg* in a ``ValueVariablesGroup`` when keepdims=1.
+
+        Parameters
+        ----------
+        agg:
+            The aggregated ibis expression (a single scalar per row).
+        keepdims:
+            1 to preserve the reduced axis as a size-1 dimension (standard ONNX
+            behavior), 0 to squeeze it out.
+        """
+        if keepdims == 1:
+            self.set_output(ValueVariablesGroup({"out_0": agg}))
+        else:
+            self.set_output(agg)

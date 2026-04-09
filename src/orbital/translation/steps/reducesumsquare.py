@@ -12,7 +12,7 @@ https://onnx.ai/onnx/operators/onnx__ReduceSumSquare.html
 """
 
 from ._base_reduce import _ReduceAxisTranslator
-from ..variables import NumericVariablesGroup, ValueVariablesGroup, VariablesGroup
+from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class ReduceSumSquareTranslator(_ReduceAxisTranslator):
@@ -35,9 +35,6 @@ class ReduceSumSquareTranslator(_ReduceAxisTranslator):
             for col in cols[1:]:
                 sum_sq = sum_sq + col ** 2
             agg = self._optimizer.fold_operation(sum_sq)
-            if keepdims == 1:
-                self.set_output(ValueVariablesGroup({"out_0": agg}))
-            else:
-                self.set_output(agg)
+            self._set_reduce_output(agg, keepdims)
         else:
             self.set_output(self._optimizer.fold_operation(data ** 2))

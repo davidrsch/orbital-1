@@ -1,5 +1,7 @@
 """Shared base class for ONNX normalisation translators."""
 
+import ibis
+
 from ..translator import Translator
 
 
@@ -63,3 +65,38 @@ class NormTranslatorBase(Translator):
                 bias = bias_raw
 
         return scale, bias, epsilon
+
+    def _compute_mean_std(self, cols: list, n: int, epsilon: float):
+        """Compute per-row mean and std expressions from feature column expressions.
+
+        Used by LayerNormalization and InstanceNormalization which share the
+        same per-row normalisation formula.
+
+        Parameters
+        ----------
+        cols:
+            List of ibis column expressions (one per feature/channel).
+        n:
+            Number of columns (same as ``len(cols)``).
+        epsilon:
+            Small constant added inside the square-root to avoid division by zero.
+
+        Returns
+        -------
+        tuple[ibis_expr, ibis_expr]
+            ``(mean_expr, std_expr)`` — both are inline SQL expressions
+            evaluated per row.
+        """
+        mean_expr = cols[0]
+        for col in cols[1:]:
+            mean_expr = mean_expr + col
+        mean_expr = mean_expr / ibis.literal(float(n))
+
+        var_terms = [(col - mean_expr) ** 2 for col in cols]
+        var_expr = var_terms[0]
+        for t in var_terms[1:]:
+            var_expr = var_expr + t
+        var_expr = var_expr / ibis.literal(float(n))
+
+        std_expr = (var_expr + ibis.literal(epsilon)) ** ibis.literal(0.5)
+        return mean_expr, std_expr

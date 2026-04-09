@@ -15,6 +15,7 @@ from ._base_reduce import _ReduceAxisTranslator
 from ..variables import NumericVariablesGroup, VariablesGroup
 
 
+
 class ReduceSumTranslator(_ReduceAxisTranslator):
     """Translate the ONNX ReduceSum operator over the feature axis."""
 
@@ -35,11 +36,7 @@ class ReduceSumTranslator(_ReduceAxisTranslator):
             for col in cols[1:]:
                 sum_expr = sum_expr + col
             agg = self._optimizer.fold_operation(sum_expr)
-            if keepdims == 1:
-                from ..variables import ValueVariablesGroup
-                self.set_output(ValueVariablesGroup({"out_0": agg}))
-            else:
-                self.set_output(agg)
+            self._set_reduce_output(agg, keepdims)
         else:
             # Single column: sum is itself.
             self.set_output(data)

@@ -15,6 +15,7 @@ from ._base_reduce import _ReduceAxisTranslator
 from ..variables import NumericVariablesGroup, VariablesGroup
 
 
+
 class ReduceProdTranslator(_ReduceAxisTranslator):
     """Translate the ONNX ReduceProd operator over the feature axis."""
 
@@ -35,11 +36,7 @@ class ReduceProdTranslator(_ReduceAxisTranslator):
             for col in cols[1:]:
                 prod_expr = prod_expr * col
             agg = self._optimizer.fold_operation(prod_expr)
-            if keepdims == 1:
-                from ..variables import ValueVariablesGroup
-                self.set_output(ValueVariablesGroup({"out_0": agg}))
-            else:
-                self.set_output(agg)
+            self._set_reduce_output(agg, keepdims)
         else:
             # Single column: product is itself.
             self.set_output(data)

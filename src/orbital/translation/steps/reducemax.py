@@ -35,11 +35,7 @@ class ReduceMaxTranslator(_ReduceAxisTranslator):
             for col in cols[1:]:
                 max_expr = ibis.greatest(max_expr, col)
             agg = self._optimizer.fold_operation(max_expr)
-            if keepdims == 1:
-                from ..variables import ValueVariablesGroup
-                self.set_output(ValueVariablesGroup({"out_0": agg}))
-            else:
-                self.set_output(agg)
+            self._set_reduce_output(agg, keepdims)
         else:
             # Single column: max of one element is itself.
             self.set_output(data)

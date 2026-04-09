@@ -262,7 +262,7 @@ class ResultsProjection:
 def translate(
     table: ibis.Table,
     pipeline: ParsedPipeline,
-    projection: ResultsProjection = ResultsProjection(),
+    projection: typing.Optional[ResultsProjection] = None,
     *,
     allow_text_tensors: bool = False,
 ) -> ibis.Table:
@@ -280,6 +280,8 @@ def translate(
         passthrough text features. Set to ``True`` to preserve the casts
         exactly as exported.
     """
+    if projection is None:
+        projection = ResultsProjection()
     optimizer = Optimizer(enabled=True)
     options = TranslationOptions(allow_text_tensors=allow_text_tensors)
     features = {colname: table[colname] for colname in table.columns}
@@ -300,8 +302,10 @@ def translate(
 def _projection_results(
     table: ibis.Table,
     variables: GraphVariables,
-    projection: ResultsProjection = ResultsProjection(),
+    projection: typing.Optional[ResultsProjection] = None,
 ) -> ibis.Table:
+    if projection is None:
+        projection = ResultsProjection()
     # As we pop out the variables as we use them
     # the remaining ones are the values resulting from all
     # graph branches.
@@ -336,7 +340,7 @@ def _log_debug_start(translator: Translator, variables: GraphVariables) -> None:
             value = initializer
         else:
             raise ValueError(
-                f"Unknow input: {inp} for node {node.name}({translator.__class__.__name__})"
+                f"Unknown input: {inp} for node {node.name}({translator.__class__.__name__})"
             )
         debug_inputs[inp] = value
     log.debug(

@@ -13,7 +13,7 @@ https://onnx.ai/onnx/operators/onnx__ReduceLogSum.html
 
 
 from ._base_reduce import _ReduceAxisTranslator
-from ..variables import NumericVariablesGroup, ValueVariablesGroup, VariablesGroup
+from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class ReduceLogSumTranslator(_ReduceAxisTranslator):
@@ -34,9 +34,6 @@ class ReduceLogSumTranslator(_ReduceAxisTranslator):
             for col in cols[1:]:
                 sum_expr = sum_expr + col
             agg = self._optimizer.fold_operation(sum_expr.ln())
-            if keepdims == 1:
-                self.set_output(ValueVariablesGroup({"out_0": agg}))
-            else:
-                self.set_output(agg)
+            self._set_reduce_output(agg, keepdims)
         else:
             self.set_output(self._optimizer.fold_operation(data.ln()))

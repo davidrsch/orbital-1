@@ -3,7 +3,7 @@
 import ibis
 
 from ._base_reduce import _ReduceAxisTranslator
-from ..variables import NumericVariablesGroup, ValueVariablesGroup, VariablesGroup
+from ..variables import NumericVariablesGroup, VariablesGroup
 
 
 class ReduceMeanTranslator(_ReduceAxisTranslator):
@@ -30,10 +30,7 @@ class ReduceMeanTranslator(_ReduceAxisTranslator):
                 mean_expr = mean_expr + col
             mean_expr = mean_expr / ibis.literal(float(n))
             agg = self._optimizer.fold_operation(mean_expr)
-            if keepdims == 1:
-                self.set_output(ValueVariablesGroup({"out_0": agg}))
-            else:
-                self.set_output(agg)
+            self._set_reduce_output(agg, keepdims)
         else:
             # Single column: mean of a scalar column is itself.
             self.set_output(data)

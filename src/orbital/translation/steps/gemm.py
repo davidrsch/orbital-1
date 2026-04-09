@@ -19,9 +19,6 @@ class GemmTranslator(Translator):
         trans_a = int(self._attributes.get("transA", 0))
         trans_b = int(self._attributes.get("transB", 0))
 
-        if trans_a != 0:
-            raise NotImplementedError("Gemm: transA=1 is not supported.")
-
         b_tensor = self._variables.get_initializer(self.inputs[1])
         if b_tensor is None:
             raise ValueError("Gemm: B (weight matrix) not found in initializers.")

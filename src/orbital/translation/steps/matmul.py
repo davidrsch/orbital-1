@@ -27,6 +27,14 @@ class MatMulTranslator(Translator):
         """Performs the translation and set the output variable."""
         # https://onnx.ai/onnx/operators/onnx__MatMul.html
 
+        # Detect dynamic B (output of a prior layer) before attempting initializer lookup
+        if self._variables.peek_variable(self.inputs[1]) is not None:
+            raise NotImplementedError(
+                "MatMulTranslator requires the B matrix to be a constant initializer "
+                "(e.g., a weight tensor). Dynamic B (output of a prior layer) is not "
+                "currently supported."
+            )
+
         coef_tensor = self._variables.get_initializer(self.inputs[1])
         if coef_tensor is None:
             raise ValueError(

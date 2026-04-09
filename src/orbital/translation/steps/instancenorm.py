@@ -58,20 +58,7 @@ class InstanceNormalizationTranslator(NormTranslatorBase):
                 f"does not match number of channels ({n})."
             )
 
-        # Per-row mean across all C channels (inline expression).
-        mean_expr = cols[0]
-        for col in cols[1:]:
-            mean_expr = mean_expr + col
-        mean_expr = mean_expr / ibis.literal(float(n))
-
-        # Per-row variance across all C channels (inline, duplicates mean_expr).
-        var_terms = [(col - mean_expr) ** 2 for col in cols]
-        var_expr = var_terms[0]
-        for t in var_terms[1:]:
-            var_expr = var_expr + t
-        var_expr = var_expr / ibis.literal(float(n))
-
-        std_expr = (var_expr + ibis.literal(epsilon)) ** ibis.literal(0.5)
+        mean_expr, std_expr = self._compute_mean_std(cols, n, epsilon)
 
         result = NumericVariablesGroup(
             {

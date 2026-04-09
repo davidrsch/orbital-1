@@ -47,7 +47,7 @@ class ModTranslator(Translator):
                 # C fmod: remainder has sign of dividend
                 rem = v - (v / d_lit).cast("int64").cast("float64") * d_lit
             else:
-                # C-style truncated: remainder has sign of divisor
+                # floor modulo (sign follows divisor), as required by ONNX fmod=0
                 rem = v % d_lit
             return rem
 

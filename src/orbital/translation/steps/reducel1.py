@@ -33,11 +33,7 @@ class ReduceL1Translator(_ReduceAxisTranslator):
             for col in cols[1:]:
                 sum_expr = sum_expr + col.abs()
             agg = self._optimizer.fold_operation(sum_expr)
-            if keepdims == 1:
-                from ..variables import ValueVariablesGroup
-                self.set_output(ValueVariablesGroup({"out_0": agg}))
-            else:
-                self.set_output(agg)
+            self._set_reduce_output(agg, keepdims)
         else:
             # Single column: L1 norm is its absolute value.
             self.set_output(self._optimizer.fold_operation(data.abs()))
