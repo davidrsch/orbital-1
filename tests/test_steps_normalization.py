@@ -380,6 +380,38 @@ class TestMeanVarianceNormalizationTranslator:
         assert abs(a_val - (-1.0 / std)) < 1e-6
         assert abs(b_val - (1.0 / std)) < 1e-6
 
+    def test_axes_1_accepted(self):
+        """axes=[1] must not raise NotImplementedError.
+
+        Regression test: previously any explicit axes value raised
+        NotImplementedError; axes=[1] (feature-axis normalisation for 2-D
+        tabular input) is now accepted as equivalent to the default behaviour.
+        """
+        table = ibis.memtable({"a": [1.0], "b": [3.0]})
+        node = helper.make_node(
+            "MeanVarianceNormalization",
+            inputs=["x"],
+            outputs=["output"],
+            axes=[1],
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None])],
+            [],
+        )
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.meanvariancenorm import (
+            MeanVarianceNormalizationTranslator,
+        )
+        # Must not raise — axes=[1] is the supported normalisation axis for 2-D input.
+        MeanVarianceNormalizationTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("output")
+        assert isinstance(result, NumericVariablesGroup)
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: ReduceLogSumTranslator

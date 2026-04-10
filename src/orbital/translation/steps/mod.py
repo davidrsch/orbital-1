@@ -2,7 +2,7 @@
 
 Element-wise modulo:
 
-    fmod=0 (default): y = x - trunc(x / y_divisor) * y_divisor  (C-style %)
+    fmod=0 (default): y = x - floor(x / y_divisor) * y_divisor  (Python-style floor modulo)
     fmod=1:           y = fmod(x, y_divisor)  (C fmod, sign matches dividend)
 
 References
@@ -48,7 +48,7 @@ class ModTranslator(Translator):
                 rem = v - (v / d_lit).cast("int64").cast("float64") * d_lit
             else:
                 # floor modulo (sign follows divisor), as required by ONNX fmod=0
-                rem = v % d_lit
+                rem = v - (v / d_lit).floor() * d_lit
             return rem
 
         if isinstance(data, VariablesGroup):

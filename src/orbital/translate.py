@@ -27,9 +27,11 @@ from .translation.steps.featurevectorizer import FeatureVectorizerTranslator
 from .translation.steps.div import DivTranslator
 from .translation.steps.dropout import DropoutTranslator
 from .translation.steps.elu import EluTranslator
+from .translation.steps.ceil import CeilTranslator
 from .translation.steps.erf import ErfTranslator
 from .translation.steps.exp import ExpTranslator
 from .translation.steps.flatten import FlattenTranslator
+from .translation.steps.floor import FloorTranslator
 from .translation.steps.log import LogTranslator
 from .translation.steps.gather import GatherTranslator
 from .translation.steps.gelu import GeluTranslator
@@ -42,6 +44,8 @@ from .translation.steps.hardswish import HardSwishTranslator
 from .translation.steps.hardtanh import HardTanhTranslator
 from .translation.steps.identity import IdentityTranslator
 from .translation.steps.imputer import ImputerTranslator
+from .translation.steps.isinf import IsInfTranslator
+from .translation.steps.isnan import IsNanTranslator
 from .translation.steps.instancenorm import InstanceNormalizationTranslator
 from .translation.steps.labelencoder import LabelEncoderTranslator
 from .translation.steps.layernorm import LayerNormalizationTranslator
@@ -59,6 +63,7 @@ from .translation.steps.mod import ModTranslator
 from .translation.steps.meanvariancenorm import MeanVarianceNormalizationTranslator
 from .translation.steps.attention import AttentionTranslator
 from .translation.steps.multiheadattention import MultiHeadAttentionTranslator
+from .translation.steps.skip_layer_norm import SkipLayerNormalizationTranslator
 from .translation.steps.mul import MulTranslator
 from .translation.steps.neg import NegTranslator
 from .translation.steps.onehotencoder import OneHotEncoderTranslator
@@ -76,6 +81,7 @@ from .translation.steps.reducesumsquare import ReduceSumSquareTranslator
 from .translation.steps.reduceprod import ReduceProdTranslator
 from .translation.steps.relu import ReluTranslator
 from .translation.steps.reshape import ReshapeTranslator
+from .translation.steps.round_ import RoundTranslator
 from .translation.steps.rmsnorm import RMSNormalizationTranslator
 from .translation.steps.rnn import RNNTranslator
 from .translation.steps.scaler import ScalerTranslator
@@ -118,6 +124,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "BatchNormalization": BatchNormalizationTranslator,
     "Cast": CastTranslator,
     "CastLike": CastLikeTranslator,
+    "Ceil": CeilTranslator,
     "Celu": CeluTranslator,
     "Clip": ClipTranslator,
     "Concat": ConcatTranslator,
@@ -154,6 +161,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "MeanVarianceNormalization": MeanVarianceNormalizationTranslator,
     "Attention": AttentionTranslator,
     "MultiHeadAttention": MultiHeadAttentionTranslator,
+    "SkipLayerNormalization": SkipLayerNormalizationTranslator,
     "Neg": NegTranslator,
     "Pad": PadTranslator,
     "Pow": PowTranslator,
@@ -176,10 +184,12 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Split": SplitTranslator,
     "Tile": TileTranslator,
     "Flatten": FlattenTranslator,
+    "Floor": FloorTranslator,
     "LogSoftmax": LogSoftmaxTranslator,
     "MaxPool": MaxPoolTranslator,
     "Relu": ReluTranslator,
     "Reshape": ReshapeTranslator,
+    "Round": RoundTranslator,
     "RMSNormalization": RMSNormalizationTranslator,
     "Transpose": TransposeTranslator,
     "Scaler": ScalerTranslator,
@@ -195,6 +205,8 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "ArrayFeatureExtractor": ArrayFeatureExtractorTranslator,
     "Identity": IdentityTranslator,
     "Imputer": ImputerTranslator,
+    "IsInf": IsInfTranslator,
+    "IsNaN": IsNanTranslator,
     "LabelEncoder": LabelEncoderTranslator,
     "OneHotEncoder": OneHotEncoderTranslator,
     "Where": WhereTranslator,
@@ -291,6 +303,16 @@ def translate(
         op_type = node.op_type
         if op_type not in TRANSLATORS:
             raise NotImplementedError(f"Translation for {op_type} not implemented")
+        if op_type == "Attention" and node.domain != "com.microsoft":
+            raise NotImplementedError(
+                "Attention: only the com.microsoft contrib op is supported. "
+                "The standard ai.onnx.Attention op (ONNX opset 23+) uses different "
+                "semantics and is not supported."
+            )
+        if op_type == "SkipLayerNormalization" and node.domain != "com.microsoft":
+            raise NotImplementedError(
+                "SkipLayerNormalization: only the com.microsoft contrib op is supported."
+            )
         translator = TRANSLATORS[op_type](table, node, variables, optimizer, options)  # type: ignore[abstract]
         _log_debug_start(translator, variables)
         translator.process()

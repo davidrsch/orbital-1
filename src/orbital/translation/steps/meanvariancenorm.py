@@ -26,11 +26,11 @@ class MeanVarianceNormalizationTranslator(Translator):
     def process(self) -> None:
         """Translate the MeanVarianceNormalization node."""
         axes = self._attributes.get("axes", None)
-        if axes is not None:
+        if axes is not None and list(axes) != [1]:
             # ONNX default is axes=[0, 2, 3] for NCHW; only last-axis normalisation is supported
-            # Check if axes is equivalent to normalising ALL non-batch dims except the feature axis
-            # For 2D input (batch, features), only axes=[0] would be non-standard; default is fine.
-            # Raise for any explicit axes specification that is not None (conservative).
+            # For 2D tabular input (N, C), axes=[1] means "normalise along the feature axis",
+            # which is semantically identical to the default behaviour.
+            # Raise for any other explicit axes specification.
             raise NotImplementedError(
                 f"MeanVarianceNormalization: axes={axes} is not supported; "
                 "only default (all axes) normalisation is supported."
@@ -62,7 +62,9 @@ class MeanVarianceNormalizationTranslator(Translator):
 
         result = NumericVariablesGroup(
             {
-                field: self._optimizer.fold_operation((cols[i] - mean_expr) / std_expr)
+                field: self._optimizer.fold_operation(
+                    (cols[i] - mean_expr) / (std_expr + ibis.literal(1e-9))
+                )
                 for i, field in enumerate(fields)
             }
         )

@@ -203,6 +203,31 @@ class TestModTranslator:
         val = list(backend.execute(result))[0]
         assert abs(val - (-1.0)) < 1e-6
 
+    def test_floor_mod_negative(self):
+        """fmod=0, x=-7, divisor=3: floor modulo yields 2 (not -1).
+
+        Regression test: fmod=0 uses Python-style floor modulo so the result
+        follows the sign of the divisor.  -7 mod 3 = 2 (not -1 as in C fmod).
+        """
+        divisor_tensor = helper.make_tensor("d", TensorProto.FLOAT, [1], [3.0])
+        node = helper.make_node("Mod", inputs=["x", "d"], outputs=["y"], fmod=0)
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None])],
+            [helper.make_tensor_value_info("y", TensorProto.FLOAT, [None])],
+            [divisor_tensor],
+        )
+        table = ibis.memtable({"x": [-7.0]})
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
+        variables["x"] = table["x"]
+        from orbital.translation.steps.mod import ModTranslator
+        ModTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        result = variables.peek_variable("y")
+        backend = ibis.duckdb.connect()
+        assert abs(list(backend.execute(result))[0] - 2.0) < 1e-6
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: ScatterElementsTranslator
@@ -289,5 +314,69 @@ class TestPadTranslator:
             PadTranslator(
                 table, graph.node[0], variables, self.optimizer, TranslationOptions()
             ).process()
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: FloorTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestFloorTranslator:
+    """Tests for FloorTranslator."""
+
+
+    def test_floor_registered(self):
+        """Verify FloorTranslator is registered in TRANSLATORS."""
+        from orbital.translation.steps.floor import FloorTranslator
+        assert TRANSLATORS.get("Floor") is FloorTranslator
+
+    def test_floor_basic(self):
+        """floor(-1.5) = -2.0, floor(1.7) = 1.0."""
+        table = ibis.memtable({"x": [-1.5, 1.7]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = Floor(x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.floor import FloorTranslator
+        FloorTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        assert result == [-2.0, 1.0]
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: CeilTranslator
+# ---------------------------------------------------------------------------
+
+
+class TestCeilTranslator:
+    """Tests for CeilTranslator."""
+
+
+    def test_ceil_registered(self):
+        """Verify CeilTranslator is registered in TRANSLATORS."""
+        from orbital.translation.steps.ceil import CeilTranslator
+        assert TRANSLATORS.get("Ceil") is CeilTranslator
+
+    def test_ceil_basic(self):
+        """ceil(-1.5) = -1.0, ceil(1.2) = 2.0."""
+        table = ibis.memtable({"x": [-1.5, 1.2]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = Ceil(x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.ceil import CeilTranslator
+        CeilTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        assert result == [-1.0, 2.0]
 
 

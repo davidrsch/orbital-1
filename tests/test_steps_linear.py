@@ -528,3 +528,32 @@ class TestGemmTranslator:
         assert backend.execute(result["out_0"]).tolist() == [10.0]
         assert backend.execute(result["out_1"]).tolist() == [13.0]
 
+    def test_transA_not_supported(self):
+        """Gemm with transA=1 must raise NotImplementedError.
+
+        Regression test: transA=1 is not supported in the tabular context;
+        the translator must raise NotImplementedError rather than silently
+        producing wrong results.
+        """
+        from orbital.translation.steps.gemm import GemmTranslator
+        table = ibis.memtable({"h0": [1.0], "h1": [2.0]})
+        B_tensor = helper.make_tensor("B", TensorProto.FLOAT, [2, 2], [1.0, 0.0, 0.0, 1.0])
+        node = helper.make_node(
+            "Gemm",
+            inputs=["A", "B"],
+            outputs=["output"],
+            transA=1,
+        )
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("A", TensorProto.FLOAT, [None, 2])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, 2])],
+            [B_tensor],
+        )
+        variables = GraphVariables(ibis.memtable({"A": [1.0]}), graph)
+        variables["A"] = NumericVariablesGroup({"h0": table["h0"], "h1": table["h1"]})
+        with pytest.raises(NotImplementedError):
+            GemmTranslator(
+                table, graph.node[0], variables, self.optimizer, TranslationOptions()
+            ).process()
+

@@ -17,6 +17,10 @@ class GemmTranslator(Translator):
         alpha = float(self._attributes.get("alpha", 1.0))
         beta = float(self._attributes.get("beta", 1.0))
         trans_a = int(self._attributes.get("transA", 0))
+        if trans_a != 0:
+            raise NotImplementedError(
+                "Gemm: transA=1 is not supported. Input A must not be transposed."
+            )
         trans_b = int(self._attributes.get("transB", 0))
 
         b_tensor = self._variables.get_initializer(self.inputs[1])
