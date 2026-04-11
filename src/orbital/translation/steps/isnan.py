@@ -8,7 +8,7 @@ from ..translator import Translator
 from ..variables import NumericVariablesGroup, VariablesGroup
 
 
-class IsNanTranslator(Translator):
+class IsNaNTranslator(Translator):
     """Translate the ONNX IsNaN operator: element-wise boolean NaN check."""
 
     def process(self) -> None:

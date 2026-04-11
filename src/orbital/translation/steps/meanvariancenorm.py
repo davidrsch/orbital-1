@@ -58,12 +58,13 @@ class MeanVarianceNormalizationTranslator(Translator):
             var_expr = var_expr + t
         var_expr = var_expr / ibis.literal(float(n))
 
-        std_expr = var_expr ** ibis.literal(0.5)
+        epsilon = float(self._attributes.get("epsilon", 1e-5))
+        denom_expr = (var_expr + ibis.literal(epsilon)) ** ibis.literal(0.5)
 
         result = NumericVariablesGroup(
             {
                 field: self._optimizer.fold_operation(
-                    (cols[i] - mean_expr) / (std_expr + ibis.literal(1e-9))
+                    (cols[i] - mean_expr) / denom_expr
                 )
                 for i, field in enumerate(fields)
             }

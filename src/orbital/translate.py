@@ -45,7 +45,7 @@ from .translation.steps.hardtanh import HardTanhTranslator
 from .translation.steps.identity import IdentityTranslator
 from .translation.steps.imputer import ImputerTranslator
 from .translation.steps.isinf import IsInfTranslator
-from .translation.steps.isnan import IsNanTranslator
+from .translation.steps.isnan import IsNaNTranslator
 from .translation.steps.instancenorm import InstanceNormalizationTranslator
 from .translation.steps.labelencoder import LabelEncoderTranslator
 from .translation.steps.layernorm import LayerNormalizationTranslator
@@ -206,7 +206,7 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "Identity": IdentityTranslator,
     "Imputer": ImputerTranslator,
     "IsInf": IsInfTranslator,
-    "IsNaN": IsNanTranslator,
+    "IsNaN": IsNaNTranslator,
     "LabelEncoder": LabelEncoderTranslator,
     "OneHotEncoder": OneHotEncoderTranslator,
     "Where": WhereTranslator,
