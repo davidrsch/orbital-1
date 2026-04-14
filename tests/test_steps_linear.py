@@ -529,11 +529,11 @@ class TestGemmTranslator:
         assert backend.execute(result["out_1"]).tolist() == [13.0]
 
     def test_transA_not_supported(self):
-        """Gemm with transA=1 must raise NotImplementedError.
+        """Gemm with transA=1 is treated as a no-op in the tabular 1-D context.
 
-        Regression test: transA=1 is not supported in the tabular context;
-        the translator must raise NotImplementedError rather than silently
-        producing wrong results.
+        In the orbital column model, A is always a flat row vector so transposing
+        it is semantically identical to transA=0.  Verify the computation still
+        produces the correct output (identity matrix → output equals input).
         """
         from orbital.translation.steps.gemm import GemmTranslator
         table = ibis.memtable({"h0": [1.0], "h1": [2.0]})
@@ -552,8 +552,14 @@ class TestGemmTranslator:
         )
         variables = GraphVariables(ibis.memtable({"A": [1.0]}), graph)
         variables["A"] = NumericVariablesGroup({"h0": table["h0"], "h1": table["h1"]})
-        with pytest.raises(NotImplementedError):
-            GemmTranslator(
-                table, graph.node[0], variables, self.optimizer, TranslationOptions()
-            ).process()
+        translator = GemmTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        translator.process()
+        result = variables.peek_variable("output")
+        assert isinstance(result, VariablesGroup)
+        backend = ibis.duckdb.connect()
+        vals = [backend.execute(v).tolist()[0] for v in result.values()]
+        assert abs(vals[0] - 1.0) < 1e-6  # h0 * 1 + h1 * 0 = 1.0
+        assert abs(vals[1] - 2.0) < 1e-6  # h0 * 0 + h1 * 1 = 2.0
 

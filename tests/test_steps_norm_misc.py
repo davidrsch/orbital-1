@@ -311,6 +311,72 @@ class TestLRNTranslator:
 
 # ---------------------------------------------------------------------------
 # Unit tests: LogTranslator
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------   
 
 
+class TestSkipLayerNormalizationTranslator:
+    """Tests for SkipLayerNormalizationTranslator."""
+
+    def test_skiplayernorm_registered(self):
+        from orbital.translation.steps.skip_layer_norm import SkipLayerNormalizationTranslator
+        assert TRANSLATORS.get("SkipLayerNormalization") is SkipLayerNormalizationTranslator
+
+    def test_skiplayernorm_basic(self):
+        """SkipLayerNorm(input, skip, gamma, beta) == LayerNorm(input + skip)."""
+        import math
+        n = 3  # hidden size
+        row_input = [0.1, -0.5, 0.8]
+        row_skip = [0.2, 0.3, -0.1]
+        gamma_vals = [1.0, 1.0, 1.0]
+        beta_vals = [0.0, 0.0, 0.0]
+        epsilon = 1e-12
+
+        combined = [a + b for a, b in zip(row_input, row_skip)]
+        mean_c = sum(combined) / n
+        var_c = sum((v - mean_c) ** 2 for v in combined) / n
+        std_c = math.sqrt(var_c + epsilon)
+        expected = [(v - mean_c) / std_c * g + b for v, g, b in zip(combined, gamma_vals, beta_vals)]
+
+        table_data = {f"i{j}": [row_input[j]] for j in range(n)}
+        table_data.update({f"s{j}": [row_skip[j]] for j in range(n)})
+        table = ibis.memtable(table_data)
+
+        gamma_tensor = helper.make_tensor("gamma", TensorProto.FLOAT, [n], gamma_vals)
+        beta_tensor = helper.make_tensor("beta", TensorProto.FLOAT, [n], beta_vals)
+
+        node = helper.make_node(
+            "SkipLayerNormalization",
+            inputs=["input", "skip", "gamma", "beta"],
+            outputs=["output"],
+            domain="com.microsoft",
+            epsilon=epsilon,
+        )
+        graph = helper.make_graph(
+            [node],
+            "test_graph",
+            [
+                helper.make_tensor_value_info("input", TensorProto.FLOAT, [n]),
+                helper.make_tensor_value_info("skip", TensorProto.FLOAT, [n]),
+            ],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [n])],
+            initializer=[gamma_tensor, beta_tensor],
+        )
+
+        from orbital.translation.steps.skip_layer_norm import SkipLayerNormalizationTranslator
+        # GraphVariables needs a table with column names matching graph input names.
+        dummy = ibis.memtable({"input": [1.0], "skip": [1.0]})
+        variables = GraphVariables(dummy, graph)
+        variables["input"] = NumericVariablesGroup({f"i{j}": table[f"i{j}"] for j in range(n)})
+        variables["skip"] = NumericVariablesGroup({f"s{j}": table[f"s{j}"] for j in range(n)})
+
+        t = SkipLayerNormalizationTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        t.process()
+
+        result = variables.peek_variable("output")
+        assert isinstance(result, NumericVariablesGroup)
+        backend = ibis.duckdb.connect()
+        for j, exp in enumerate(expected):
+            val = list(backend.execute(list(result.values())[j]))[0]
+            assert abs(val - exp) < 1e-6, f"Mismatch at index {j}: {val} != {exp}"

@@ -53,10 +53,7 @@ class AveragePoolTranslator(Translator):
         k = kernel_shape[0]
 
         dilations: list[int] = list(self._attributes.get("dilations", [1]))
-        if any(d != 1 for d in dilations):
-            raise NotImplementedError(
-                f"AveragePool: dilations={dilations} is not supported; only dilation=1."
-            )
+        dil = int(dilations[0]) if dilations else 1
 
         auto_pad = str(self._attributes.get("auto_pad", "NOTSET"))
         pads: list[int] = list(self._attributes.get("pads", [0, 0]))
@@ -65,6 +62,7 @@ class AveragePoolTranslator(Translator):
         count_include_pad: int = int(self._attributes.get("count_include_pad", 0))
 
         stride = int(strides[0]) if strides else k
+        k_eff = dil * (k - 1) + 1
 
         if auto_pad == "VALID":
             pad_l, pad_r = 0, 0
@@ -73,7 +71,7 @@ class AveragePoolTranslator(Translator):
             pad_r = int(pads[1]) if len(pads) > 1 else 0
         elif auto_pad in ("SAME_UPPER", "SAME_LOWER"):
             l_out_nom = (n + stride - 1) // stride
-            total_pad = max(0, (l_out_nom - 1) * stride + k - n)
+            total_pad = max(0, (l_out_nom - 1) * stride + k_eff - n)
             if auto_pad == "SAME_UPPER":
                 pad_l, pad_r = total_pad // 2, total_pad - total_pad // 2
             else:
@@ -85,9 +83,9 @@ class AveragePoolTranslator(Translator):
 
         padded = n + pad_l + pad_r
         if ceil_mode:
-            l_out = math.ceil((padded - k) / stride) + 1
+            l_out = math.ceil((padded - k_eff) / stride) + 1
         else:
-            l_out = (padded - k) // stride + 1
+            l_out = (padded - k_eff) // stride + 1
 
         if l_out <= 0:
             raise ValueError(
@@ -99,7 +97,7 @@ class AveragePoolTranslator(Translator):
         for p in range(l_out):
             valid: list[ibis.expr.types.NumericValue] = []
             for kk in range(k):
-                pos = p * stride + kk - pad_l
+                pos = p * stride + kk * dil - pad_l
                 if 0 <= pos < n:
                     valid.append(cols[pos])
             if not valid:

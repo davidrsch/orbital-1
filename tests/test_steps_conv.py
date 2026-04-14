@@ -228,8 +228,11 @@ class TestConvTranslator:
         assert abs(list(backend.execute(result["out_0_0"]))[0] - 8.0) < 1e-6  # 4*2
         assert abs(list(backend.execute(result["out_1_0"]))[0] - 15.0) < 1e-6  # 5*3
 
-    def test_conv_grouped_non_depthwise_raises(self):
-        """group=2 with C_in=4 (non-depthwise grouped) must raise NotImplementedError."""
+    def test_conv_grouped_general(self):
+        """group=2 with C_in=4, C_out=2 (general grouped conv) works correctly."""
+        # Input: 4 channels, 1 position — [1.0, 2.0, 3.0, 4.0]
+        # Weight: shape [2, 2, 1], all 1.0 → each output is sum of its input group
+        # Group 0: out_0_0 = c0+c1 = 1+2 = 3; Group 1: out_1_0 = c2+c3 = 3+4 = 7
         table = ibis.memtable({"c0": [1.0], "c1": [2.0], "c2": [3.0], "c3": [4.0]})
         W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [2, 2, 1], [1.0] * 4)
         node = helper.make_node("Conv", inputs=["X", "W"], outputs=["Y"], group=2)
@@ -244,10 +247,16 @@ class TestConvTranslator:
             {"c0": table["c0"], "c1": table["c1"], "c2": table["c2"], "c3": table["c3"]}
         )
         from orbital.translation.steps.conv import ConvTranslator
-        with pytest.raises(NotImplementedError, match="group=2"):
-            ConvTranslator(
-                table, graph.node[0], variables, self.optimizer, TranslationOptions()
-            ).process()
+        translator = ConvTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        )
+        translator.process()
+        result = variables.peek_variable("Y")
+        assert isinstance(result, VariablesGroup)
+        backend = ibis.duckdb.connect()
+        vals = [backend.execute(v).tolist()[0] for v in result.values()]
+        assert abs(vals[0] - 3.0) < 1e-5
+        assert abs(vals[1] - 7.0) < 1e-5
 
 
 # ---------------------------------------------------------------------------

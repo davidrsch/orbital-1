@@ -100,12 +100,6 @@ class ConvTranslator(Translator):
 
         # Validate grouped/depthwise configuration now that c_in is known.
         if group != 1:
-            if group != c_in:
-                raise NotImplementedError(
-                    f"Conv: group={group} with C_in={c_in} is not supported;"
-                    " only group=1 (standard) or group==C_in (depthwise) are."
-                )
-            # Depthwise: c_in_per_group=1, c_out_per_group = c_out / group
             if c_out % group != 0:
                 raise ValueError(
                     f"Conv: C_out={c_out} is not divisible by group={group}."

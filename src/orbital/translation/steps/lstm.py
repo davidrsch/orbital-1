@@ -6,11 +6,10 @@ from ..translator import Translator
 from ..variables import ValueVariablesGroup, VariablesGroup
 from ._rnn_base import (
     _get_flat_weights,
-    _sigmoid,
+    _resolve_rnn_activation,
     _write_bidir_sequence_outputs,
     _write_sequence_outputs,
 )
-from .tanh import _tanh
 
 
 class LSTMTranslator(Translator):
@@ -53,13 +52,24 @@ class LSTMTranslator(Translator):
             )
 
         activations = self._attributes.get("activations", None)
-        if activations and list(activations) not in (
-            ["Sigmoid", "Tanh", "Tanh"],
-            ["sigmoid", "tanh", "tanh"],
-        ):
-            raise NotImplementedError(
-                "LSTM: only default activations [Sigmoid, Tanh, Tanh] are supported."
-            )
+        act_names = list(activations) if activations else ["Sigmoid", "Tanh", "Tanh"]
+        act_alphas = list(self._attributes.get("activation_alpha", []))
+        act_betas = list(self._attributes.get("activation_beta", []))
+
+        def _get_act(idx: int, default_name: str):
+            n = act_names[idx] if idx < len(act_names) else default_name
+            a = act_alphas[idx] if idx < len(act_alphas) else None
+            b = act_betas[idx] if idx < len(act_betas) else None
+            return _resolve_rnn_activation(n, a, b)
+
+        # ONNX LSTM activation order: [f=gate(i/o/f), g=cell(c), h=out]
+        # For bidirectional, activations [3,4,5] override the backward direction.
+        _act_gate = _get_act(0, "Sigmoid")
+        _act_cell = _get_act(1, "Tanh")
+        _act_out = _get_act(2, "Tanh")
+        _act_gate_bwd = _get_act(3, "Sigmoid") if len(act_names) > 3 else _act_gate
+        _act_cell_bwd = _get_act(4, "Tanh") if len(act_names) > 4 else _act_cell
+        _act_out_bwd = _get_act(5, "Tanh") if len(act_names) > 5 else _act_out
 
         input_forget = int(self._attributes.get("input_forget", 0))
         if input_forget != 0:
@@ -140,6 +150,9 @@ class LSTMTranslator(Translator):
         def _run_direction(
             d: int,
             x_seq: list,
+            f_gate,
+            g_cell,
+            h_out,
         ) -> tuple[list, list, list]:
             """Unroll one LSTM direction; returns (all_H, H_state, C_state)."""
             w_off = d * W_DIR
@@ -181,19 +194,19 @@ class LSTMTranslator(Translator):
 
                 pre_i, pre_o, pre_f, pre_c = gates  # IOFC
 
-                i_gate = [_sigmoid(v) for v in pre_i]
-                o_gate = [_sigmoid(v) for v in pre_o]
-                f_gate = [_sigmoid(v) for v in pre_f]
-                c_bar = [_tanh(v) for v in pre_c]
+                i_gate = [f_gate(v) for v in pre_i]
+                o_gate = [f_gate(v) for v in pre_o]
+                f_gate_vals = [f_gate(v) for v in pre_f]
+                c_bar = [g_cell(v) for v in pre_c]
 
                 new_C = [
                     self._optimizer.fold_operation(
-                        f_gate[h] * C_st[h] + i_gate[h] * c_bar[h]
+                        f_gate_vals[h] * C_st[h] + i_gate[h] * c_bar[h]
                     )
                     for h in range(H)
                 ]
                 new_H = [
-                    self._optimizer.fold_operation(o_gate[h] * _tanh(new_C[h]))
+                    self._optimizer.fold_operation(o_gate[h] * h_out(new_C[h]))
                     for h in range(H)
                 ]
 
@@ -206,13 +219,17 @@ class LSTMTranslator(Translator):
         # ── Run direction(s) ──────────────────────────────────────────────
         outputs = self.outputs  # may have 1, 2, or 3 entries; some may be ""
 
-        all_H_fwd, H_state_fwd, C_state_fwd = _run_direction(0, x_exprs)
+        all_H_fwd, H_state_fwd, C_state_fwd = _run_direction(
+            0, x_exprs, _act_gate, _act_cell, _act_out
+        )
 
         if direction == "bidirectional":
             x_bwd: list = []
             for t in reversed(range(T)):
                 x_bwd.extend(x_exprs[t * I : (t + 1) * I])
-            all_H_bwd_rev, H_state_bwd, C_state_bwd = _run_direction(1, x_bwd)
+            all_H_bwd_rev, H_state_bwd, C_state_bwd = _run_direction(
+                1, x_bwd, _act_gate_bwd, _act_cell_bwd, _act_out_bwd
+            )
             # Re-align: step 0 of the backward pass processed t=T-1, etc.
             all_H_bwd = list(reversed(all_H_bwd_rev))
 

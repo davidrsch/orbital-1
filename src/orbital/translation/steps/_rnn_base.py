@@ -10,6 +10,83 @@ def _sigmoid(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
     return ibis.literal(1.0) / (ibis.literal(1.0) + (-v).exp())
 
 
+def _resolve_rnn_activation(
+    name: str,
+    alpha: "float | None" = None,
+    beta: "float | None" = None,
+):
+    """Resolve an ONNX RNN activation name to a callable ``f(v) -> ibis_expr``.
+
+    Supported activations: Sigmoid, Tanh, Relu, HardSigmoid, Elu, LeakyRelu,
+    Softsign, Softplus, Affine.
+
+    Parameters
+    ----------
+    name:
+        ONNX activation name (case-insensitive).
+    alpha:
+        Optional scaling parameter used by some activations (e.g. HardSigmoid,
+        Elu, LeakyRelu).  Pass ``None`` to use the ONNX default.
+    beta:
+        Optional shift parameter used by some activations (e.g. HardSigmoid,
+        Affine).  Pass ``None`` to use the ONNX default.
+    """
+    from .tanh import _tanh  # local import to avoid circular dependency at module load
+
+    name_lower = name.lower()
+    if name_lower == "sigmoid":
+        return _sigmoid
+    elif name_lower == "tanh":
+        return _tanh
+    elif name_lower == "relu":
+        def _relu(v):
+            return ibis.greatest(v, ibis.literal(0.0))
+        return _relu
+    elif name_lower == "hardsigmoid":
+        a = float(alpha) if alpha is not None else 0.2
+        b = float(beta) if beta is not None else 0.5
+        def _hardsig(v):
+            return ibis.greatest(
+                ibis.literal(0.0),
+                ibis.least(ibis.literal(1.0), ibis.literal(a) * v + ibis.literal(b)),
+            )
+        return _hardsig
+    elif name_lower == "leakyrelu":
+        a = float(alpha) if alpha is not None else 0.01
+        def _leaky(v):
+            return ibis.ifelse(v >= ibis.literal(0.0), v, ibis.literal(a) * v)
+        return _leaky
+    elif name_lower == "elu":
+        a = float(alpha) if alpha is not None else 1.0
+        def _elu(v):
+            return ibis.ifelse(
+                v >= ibis.literal(0.0),
+                v,
+                ibis.literal(a) * (v.exp() - ibis.literal(1.0)),
+            )
+        return _elu
+    elif name_lower == "softsign":
+        def _softsign(v):
+            return v / (ibis.literal(1.0) + v.abs())
+        return _softsign
+    elif name_lower == "softplus":
+        def _softplus(v):
+            return (ibis.literal(1.0) + v.exp()).log()
+        return _softplus
+    elif name_lower == "affine":
+        a = float(alpha) if alpha is not None else 1.0
+        b = float(beta) if beta is not None else 0.0
+        def _affine(v):
+            return ibis.literal(a) * v + ibis.literal(b)
+        return _affine
+    else:
+        raise NotImplementedError(
+            f"RNN activation '{name}' is not supported. "
+            "Supported activations: Sigmoid, Tanh, Relu, HardSigmoid, "
+            "Elu, LeakyRelu, Softsign, Softplus, Affine."
+        )
+
+
 def _get_flat_weights(
     variables: object,
     input_name: str,

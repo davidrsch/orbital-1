@@ -390,6 +390,94 @@ class TestClipTranslator:
 
 # ---------------------------------------------------------------------------
 # Unit tests: ModTranslator
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------   
 
 
+class TestIsInfTranslator:
+    """Tests for IsInfTranslator."""
+
+    def test_isinf_registered(self):
+        from orbital.translation.steps.isinf import IsInfTranslator
+        assert TRANSLATORS.get("IsInf") is IsInfTranslator
+
+    def test_isinf_single_column(self):
+        table = ibis.memtable({"x": [1.0, float("inf"), float("-inf")]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = IsInf(x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.isinf import IsInfTranslator
+        t = IsInfTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        assert result == [False, True, True]
+
+
+class TestIsNaNTranslator:
+    """Tests for IsNaNTranslator."""
+
+    def test_isnan_registered(self):
+        from orbital.translation.steps.isnan import IsNaNTranslator
+        assert TRANSLATORS.get("IsNaN") is IsNaNTranslator
+
+    def test_isnan_single_column(self):
+        table = ibis.memtable({"x": [1.0, float("nan"), 3.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = IsNaN(x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.isnan import IsNaNTranslator
+        t = IsNaNTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        # DuckDB memtable stores float('nan') as NULL; isnan(NULL) returns NULL per SQL semantics.
+        assert result[0] is False
+        assert result[1] is True or result[1] is None
+        assert result[2] is False
+
+
+class TestRoundTranslator:
+    """Tests for RoundTranslator."""
+
+    def test_round_registered(self):
+        from orbital.translation.steps.round_ import RoundTranslator
+        assert TRANSLATORS.get("Round") is RoundTranslator
+
+    def test_round_single_column(self):
+        table = ibis.memtable({"x": [1.4, 2.6, 3.5]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = Round(x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.round_ import RoundTranslator
+        t = RoundTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        assert result == [1.0, 3.0, 4.0]
+
+    def test_round_group(self):
+        table = ibis.memtable({"a": [1.4, 2.6], "b": [3.5, 4.2]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = Round(x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
+        from orbital.translation.steps.round_ import RoundTranslator
+        t = RoundTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        result = variables.peek_variable("output")
+        assert isinstance(result, NumericVariablesGroup)
+        backend = ibis.duckdb.connect()
+        assert list(backend.execute(result["a"])) == [1.0, 3.0]
+        assert list(backend.execute(result["b"])) == [4.0, 4.0]

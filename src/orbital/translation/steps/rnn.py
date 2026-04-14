@@ -40,10 +40,10 @@ class RNNTranslator(Translator):
         # https://onnx.ai/onnx/operators/onnx__RNN.html
 
         direction = str(self._attributes.get("direction", "forward"))
-        if direction not in ("forward", "bidirectional"):
+        if direction not in ("forward", "reverse", "bidirectional"):
             raise NotImplementedError(
                 f"RNN: direction={direction!r} is not supported; "
-                "must be 'forward' or 'bidirectional'."
+                "must be 'forward', 'reverse', or 'bidirectional'."
             )
 
         activations = self._attributes.get("activations", None)
@@ -169,9 +169,17 @@ class RNNTranslator(Translator):
         # ── Run direction(s) ──────────────────────────────────────────────
         outputs = self.outputs  # may have 1 or 2 entries; some may be ""
 
-        all_H_fwd, H_state_fwd = _run_direction(0, x_exprs)
-
-        if direction == "bidirectional":
+        if direction == "reverse":
+            x_rev: list = []
+            for t in reversed(range(T)):
+                x_rev.extend(x_exprs[t * I : (t + 1) * I])
+            all_H_rev, H_state_rev = _run_direction(0, x_rev)
+            # Re-align: step 0 processed t=T-1; reverse so Y[t] corresponds to
+            # the output from timestep t of the *original* sequence.
+            all_H = list(reversed(all_H_rev))
+            _write_sequence_outputs(self._variables, outputs, all_H, H_state_rev)
+        elif direction == "bidirectional":
+            all_H_fwd, H_state_fwd = _run_direction(0, x_exprs)
             x_bwd: list = []
             for t in reversed(range(T)):
                 x_bwd.extend(x_exprs[t * I : (t + 1) * I])
@@ -182,4 +190,5 @@ class RNNTranslator(Translator):
                 all_H_fwd, all_H_bwd, H_state_fwd, H_state_bwd,
             )
         else:
+            all_H_fwd, H_state_fwd = _run_direction(0, x_exprs)
             _write_sequence_outputs(self._variables, outputs, all_H_fwd, H_state_fwd)

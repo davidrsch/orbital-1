@@ -6,11 +6,10 @@ from ..translator import Translator
 from ..variables import VariablesGroup
 from ._rnn_base import (
     _get_flat_weights,
-    _sigmoid,
+    _resolve_rnn_activation,
     _write_bidir_sequence_outputs,
     _write_sequence_outputs,
 )
-from .tanh import _tanh
 
 
 class GRUTranslator(Translator):
@@ -62,13 +61,22 @@ class GRUTranslator(Translator):
             )
 
         activations = self._attributes.get("activations", None)
-        if activations and list(activations) not in (
-            ["Sigmoid", "Tanh"],
-            ["sigmoid", "tanh"],
-        ):
-            raise NotImplementedError(
-                "GRU: only default activations [Sigmoid, Tanh] are supported."
-            )
+        act_names = list(activations) if activations else ["Sigmoid", "Tanh"]
+        act_alphas = list(self._attributes.get("activation_alpha", []))
+        act_betas = list(self._attributes.get("activation_beta", []))
+
+        def _get_act(idx: int, default_name: str):
+            n = act_names[idx] if idx < len(act_names) else default_name
+            a = act_alphas[idx] if idx < len(act_alphas) else None
+            b = act_betas[idx] if idx < len(act_betas) else None
+            return _resolve_rnn_activation(n, a, b)
+
+        # ONNX GRU activation order: [f=gates(z/r), g=hidden(h)]
+        # For bidirectional, activations [2,3] override the backward direction.
+        _act_gate = _get_act(0, "Sigmoid")
+        _act_h = _get_act(1, "Tanh")
+        _act_gate_bwd = _get_act(2, "Sigmoid") if len(act_names) > 2 else _act_gate
+        _act_h_bwd = _get_act(3, "Tanh") if len(act_names) > 3 else _act_h
 
         linear_before_reset = int(self._attributes.get("linear_before_reset", 0))
         if linear_before_reset not in (0, 1):
@@ -142,6 +150,8 @@ class GRUTranslator(Translator):
             d: int,
             x_seq: list,
             lbr: int = 0,
+            f_gate=None,
+            g_h=None,
         ) -> tuple[list, list]:
             """Unroll one GRU direction; returns (all_H, H_state).
 
@@ -151,6 +161,10 @@ class GRUTranslator(Translator):
                 ``linear_before_reset`` attribute (0 or 1).  When 1 the reset
                 gate is applied *after* the recurrent linear transform of the
                 previous hidden state (ONNX ``linear_before_reset`` semantics).
+            f_gate:
+                Activation callable for z and r gates (default: Sigmoid).
+            g_h:
+                Activation callable for the h candidate gate (default: Tanh).
             """
             w_off = d * W_DIR
             r_off = d * R_DIR
@@ -198,8 +212,8 @@ class GRUTranslator(Translator):
                     for h in range(H)
                 ]
 
-                z_gate = [_sigmoid(v) for v in pre_z]
-                r_gate = [_sigmoid(v) for v in pre_r]
+                z_gate = [f_gate(v) for v in pre_z]
+                r_gate = [f_gate(v) for v in pre_r]
 
                 if lbr == 0:
                     # Default (linear_before_reset=0):
@@ -240,7 +254,7 @@ class GRUTranslator(Translator):
                         for h in range(H)
                     ]
 
-                h_tilde = [_tanh(v) for v in pre_h]
+                h_tilde = [g_h(v) for v in pre_h]
 
                 new_H = [
                     self._optimizer.fold_operation(
@@ -258,13 +272,17 @@ class GRUTranslator(Translator):
         # ── Run direction(s) ──────────────────────────────────────────────
         outputs = self.outputs  # may have 1 or 2 entries; some may be ""
 
-        all_H_fwd, H_state_fwd = _run_direction(0, x_exprs, linear_before_reset)
+        all_H_fwd, H_state_fwd = _run_direction(
+            0, x_exprs, linear_before_reset, _act_gate, _act_h
+        )
 
         if direction == "bidirectional":
             x_bwd: list = []
             for t in reversed(range(T)):
                 x_bwd.extend(x_exprs[t * I : (t + 1) * I])
-            all_H_bwd_rev, H_state_bwd = _run_direction(1, x_bwd, linear_before_reset)
+            all_H_bwd_rev, H_state_bwd = _run_direction(
+                1, x_bwd, linear_before_reset, _act_gate_bwd, _act_h_bwd
+            )
             all_H_bwd = list(reversed(all_H_bwd_rev))
             _write_bidir_sequence_outputs(
                 self._variables, outputs,

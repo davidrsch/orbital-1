@@ -72,11 +72,6 @@ class ConvTransposeTranslator(Translator):
         stride = int(strides[0]) if strides else 1
         out_pad = int(output_padding[0]) if output_padding else 0
 
-        if dil != 1:
-            raise NotImplementedError(
-                "ConvTranspose: dilations > 1 are not yet supported."
-            )
-
         # ── Consume input ────────────────────────────────────────────────────
         input_val = self._variables.consume(self.inputs[0])
         if isinstance(input_val, VariablesGroup):
