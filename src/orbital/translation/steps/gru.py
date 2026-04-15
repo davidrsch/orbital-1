@@ -16,7 +16,9 @@ class GRUTranslator(Translator):
     """Translate the ONNX GRU operator by unrolling the recurrence.
 
     Limitations (raises :class:`NotImplementedError` otherwise):
-    - Forward direction only (``direction="forward"``).
+    - Forward, reverse, and bidirectional directions are supported
+      (``direction="forward"``, ``direction="reverse"``,
+       ``direction="bidirectional"``).
     - Default activations only (Sigmoid/Tanh).
     - Sequence length ``T`` must be statically recoverable from the input
       group size (``len(X_group) // input_size``).
@@ -54,10 +56,10 @@ class GRUTranslator(Translator):
         # https://onnx.ai/onnx/operators/onnx__GRU.html
 
         direction = str(self._attributes.get("direction", "forward"))
-        if direction not in ("forward", "bidirectional"):
+        if direction not in ("forward", "reverse", "bidirectional"):
             raise NotImplementedError(
                 f"GRU: direction={direction!r} is not supported; "
-                "must be 'forward' or 'bidirectional'."
+                "must be 'forward', 'reverse', or 'bidirectional'."
             )
 
         activations = self._attributes.get("activations", None)
@@ -272,11 +274,20 @@ class GRUTranslator(Translator):
         # ── Run direction(s) ──────────────────────────────────────────────
         outputs = self.outputs  # may have 1 or 2 entries; some may be ""
 
-        all_H_fwd, H_state_fwd = _run_direction(
-            0, x_exprs, linear_before_reset, _act_gate, _act_h
-        )
-
-        if direction == "bidirectional":
+        if direction == "reverse":
+            x_rev: list = []
+            for t in reversed(range(T)):
+                x_rev.extend(x_exprs[t * I : (t + 1) * I])
+            all_H_rev, H_state_rev = _run_direction(
+                0, x_rev, linear_before_reset, _act_gate, _act_h
+            )
+            # Re-align so Y[t] corresponds to timestep t of the original sequence.
+            all_H = list(reversed(all_H_rev))
+            _write_sequence_outputs(self._variables, outputs, all_H, H_state_rev)
+        elif direction == "bidirectional":
+            all_H_fwd, H_state_fwd = _run_direction(
+                0, x_exprs, linear_before_reset, _act_gate, _act_h
+            )
             x_bwd: list = []
             for t in reversed(range(T)):
                 x_bwd.extend(x_exprs[t * I : (t + 1) * I])
@@ -288,5 +299,8 @@ class GRUTranslator(Translator):
                 self._variables, outputs,
                 all_H_fwd, all_H_bwd, H_state_fwd, H_state_bwd,
             )
-        else:
+        else:  # forward
+            all_H_fwd, H_state_fwd = _run_direction(
+                0, x_exprs, linear_before_reset, _act_gate, _act_h
+            )
             _write_sequence_outputs(self._variables, outputs, all_H_fwd, H_state_fwd)

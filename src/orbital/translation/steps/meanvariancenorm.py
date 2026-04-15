@@ -58,7 +58,9 @@ class MeanVarianceNormalizationTranslator(Translator):
             var_expr = var_expr + t
         var_expr = var_expr / ibis.literal(float(n))
 
-        epsilon = float(self._attributes.get("epsilon", 1e-5))
+        # ONNX spec: MeanVarianceNormalization does not have an epsilon attribute.
+        # The spec uses a fixed epsilon of 1e-9 inside the square root.
+        epsilon = 1e-9
         denom_expr = (var_expr + ibis.literal(epsilon)) ** ibis.literal(0.5)
 
         result = NumericVariablesGroup(

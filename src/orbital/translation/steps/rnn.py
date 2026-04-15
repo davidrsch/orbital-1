@@ -28,8 +28,7 @@ import ibis
 
 from ..translator import Translator
 from ..variables import VariablesGroup
-from ._rnn_base import _get_flat_weights, _write_bidir_sequence_outputs, _write_sequence_outputs
-from .tanh import _tanh
+from ._rnn_base import _get_flat_weights, _resolve_rnn_activation, _write_bidir_sequence_outputs, _write_sequence_outputs
 
 
 class RNNTranslator(Translator):
@@ -48,17 +47,15 @@ class RNNTranslator(Translator):
 
         activations = self._attributes.get("activations", None)
         act_list = list(activations) if activations else ["Tanh"]
-        if act_list in (["Tanh"], ["tanh"]):
-            def _act_fn(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:
-                return _tanh(v)
-        elif act_list in (["Relu"], ["relu"]):
-            def _act_fn(v: ibis.expr.types.NumericValue) -> ibis.expr.types.NumericValue:  # type: ignore[misc]
-                return ibis.greatest(v, ibis.literal(0.0))
-        else:
-            raise NotImplementedError(
-                f"RNNTranslator: activation '{act_list[0]}' is not supported; "
-                "only 'Tanh' and 'Relu' are supported"
-            )
+
+        # Resolve activation function(s) using the shared helper.
+        # For bidirectional, act_list has 2 entries (forward, backward);
+        # for forward/reverse it has 1.  _resolve_rnn_activation handles all
+        # ONNX-supported activation names (Tanh, Relu, Sigmoid, HardSigmoid, …).
+        _act_fn = _resolve_rnn_activation(act_list[0] if act_list else "Tanh")
+        _act_fn_bwd = _resolve_rnn_activation(
+            act_list[1] if len(act_list) > 1 else act_list[0]
+        )
 
         hidden_size = int(self._attributes["hidden_size"])
         H = hidden_size
@@ -124,6 +121,7 @@ class RNNTranslator(Translator):
         def _run_direction(
             d: int,
             x_seq: list,
+            act_fn,
         ) -> tuple[list, list]:
             """Unroll one RNN direction; returns (all_H, H_state)."""
             w_off = d * W_DIR
@@ -160,7 +158,7 @@ class RNNTranslator(Translator):
                     for h in range(H)
                 ]
 
-                new_H = [_act_fn(v) for v in pre_h]
+                new_H = [act_fn(v) for v in pre_h]
                 H_st = new_H
                 all_H_dir.append(new_H)
 
@@ -173,22 +171,22 @@ class RNNTranslator(Translator):
             x_rev: list = []
             for t in reversed(range(T)):
                 x_rev.extend(x_exprs[t * I : (t + 1) * I])
-            all_H_rev, H_state_rev = _run_direction(0, x_rev)
+            all_H_rev, H_state_rev = _run_direction(0, x_rev, _act_fn)
             # Re-align: step 0 processed t=T-1; reverse so Y[t] corresponds to
             # the output from timestep t of the *original* sequence.
             all_H = list(reversed(all_H_rev))
             _write_sequence_outputs(self._variables, outputs, all_H, H_state_rev)
         elif direction == "bidirectional":
-            all_H_fwd, H_state_fwd = _run_direction(0, x_exprs)
+            all_H_fwd, H_state_fwd = _run_direction(0, x_exprs, _act_fn)
             x_bwd: list = []
             for t in reversed(range(T)):
                 x_bwd.extend(x_exprs[t * I : (t + 1) * I])
-            all_H_bwd_rev, H_state_bwd = _run_direction(1, x_bwd)
+            all_H_bwd_rev, H_state_bwd = _run_direction(1, x_bwd, _act_fn_bwd)
             all_H_bwd = list(reversed(all_H_bwd_rev))
             _write_bidir_sequence_outputs(
                 self._variables, outputs,
                 all_H_fwd, all_H_bwd, H_state_fwd, H_state_bwd,
             )
         else:
-            all_H_fwd, H_state_fwd = _run_direction(0, x_exprs)
+            all_H_fwd, H_state_fwd = _run_direction(0, x_exprs, _act_fn)
             _write_sequence_outputs(self._variables, outputs, all_H_fwd, H_state_fwd)

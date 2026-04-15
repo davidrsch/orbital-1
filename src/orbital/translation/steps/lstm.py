@@ -16,7 +16,8 @@ class LSTMTranslator(Translator):
     """Translate the ONNX LSTM operator by unrolling the recurrence.
 
     Limitations (raises :class:`NotImplementedError` otherwise):
-    - Forward direction only (``direction="forward"``).
+    - Forward and reverse directions only (``direction="forward"`` or
+      ``direction="reverse"`` or ``direction="bidirectional"``).
     - Default activations only (Sigmoid/Tanh/Tanh).
     - ``input_forget=0`` (default; independent input and forget gates).
     - No peephole connections (``P`` input must be absent / empty).
@@ -45,10 +46,10 @@ class LSTMTranslator(Translator):
         # https://onnx.ai/onnx/operators/onnx__LSTM.html
 
         direction = str(self._attributes.get("direction", "forward"))
-        if direction not in ("forward", "bidirectional"):
+        if direction not in ("forward", "reverse", "bidirectional"):
             raise NotImplementedError(
                 f"LSTM: direction={direction!r} is not supported; "
-                "must be 'forward' or 'bidirectional'."
+                "must be 'forward', 'reverse', or 'bidirectional'."
             )
 
         activations = self._attributes.get("activations", None)
@@ -219,11 +220,24 @@ class LSTMTranslator(Translator):
         # ── Run direction(s) ──────────────────────────────────────────────
         outputs = self.outputs  # may have 1, 2, or 3 entries; some may be ""
 
-        all_H_fwd, H_state_fwd, C_state_fwd = _run_direction(
-            0, x_exprs, _act_gate, _act_cell, _act_out
-        )
-
-        if direction == "bidirectional":
+        if direction == "reverse":
+            x_rev: list = []
+            for t in reversed(range(T)):
+                x_rev.extend(x_exprs[t * I : (t + 1) * I])
+            all_H_rev, H_state_rev, C_state_rev = _run_direction(
+                0, x_rev, _act_gate, _act_cell, _act_out
+            )
+            # Re-align so Y[t] corresponds to timestep t of the original sequence.
+            all_H = list(reversed(all_H_rev))
+            _write_sequence_outputs(self._variables, outputs, all_H, H_state_rev)
+            if len(outputs) > 2 and outputs[2]:
+                self._variables[outputs[2]] = ValueVariablesGroup(
+                    {f"out_Yc_{h}": C_state_rev[h] for h in range(H)}
+                )
+        elif direction == "bidirectional":
+            all_H_fwd, H_state_fwd, C_state_fwd = _run_direction(
+                0, x_exprs, _act_gate, _act_cell, _act_out
+            )
             x_bwd: list = []
             for t in reversed(range(T)):
                 x_bwd.extend(x_exprs[t * I : (t + 1) * I])
@@ -244,7 +258,10 @@ class LSTMTranslator(Translator):
                         **{f"out_Yc_1_{h}": C_state_bwd[h] for h in range(H)},
                     }
                 )
-        else:
+        else:  # forward
+            all_H_fwd, H_state_fwd, C_state_fwd = _run_direction(
+                0, x_exprs, _act_gate, _act_cell, _act_out
+            )
             _write_sequence_outputs(self._variables, outputs, all_H_fwd, H_state_fwd)
             if len(outputs) > 2 and outputs[2]:
                 self._variables[outputs[2]] = ValueVariablesGroup(

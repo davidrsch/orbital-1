@@ -7,6 +7,13 @@ InstanceNormalization normalises every *row* independently across all C columns:
     var    = (1/C) * sum_c  (x_c - mean)²
     y_c    = (x_c - mean) / sqrt(var + epsilon) * scale_c + bias_c
 
+In the ONNX spec, InstanceNorm reduces over the *spatial* dimensions for each
+channel.  For a 2-D tabular input (batch × C features) there are no spatial
+dimensions, so orbital treats the C feature columns as the instance and
+normalises each row across all C columns.  This matches the behaviour of
+MeanVarianceNormalization in the spatial-size-1 case but applies per-channel
+affine transforms (scale/bias) from the original model.
+
 Because the per-row mean and variance are expressed as inline SQL expressions
 the generated SQL can be verbose, but it is numerically correct.
 

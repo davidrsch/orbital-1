@@ -77,7 +77,12 @@ from .translation.steps.reducesum import ReduceSumTranslator
 from .translation.steps.reducel1 import ReduceL1Translator
 from .translation.steps.reducel2 import ReduceL2Translator
 from .translation.steps.reducelogsum import ReduceLogSumTranslator
+from .translation.steps.reducelogsumexp import ReduceLogSumExpTranslator
 from .translation.steps.reducesumsquare import ReduceSumSquareTranslator
+from .translation.steps.variadicsum import VariadicSumTranslator
+from .translation.steps.variadicmax import VariadicMaxTranslator
+from .translation.steps.variadicmin import VariadicMinTranslator
+from .translation.steps.variadicmean import VariadicMeanTranslator
 from .translation.steps.reduceprod import ReduceProdTranslator
 from .translation.steps.relu import ReluTranslator
 from .translation.steps.reshape import ReshapeTranslator
@@ -169,7 +174,12 @@ TRANSLATORS: dict[str, type[Translator]] = {
     "ReduceL1": ReduceL1Translator,
     "ReduceL2": ReduceL2Translator,
     "ReduceLogSum": ReduceLogSumTranslator,
+    "ReduceLogSumExp": ReduceLogSumExpTranslator,
     "ReduceSumSquare": ReduceSumSquareTranslator,
+    "Sum": VariadicSumTranslator,
+    "Max": VariadicMaxTranslator,
+    "Min": VariadicMinTranslator,
+    "Mean": VariadicMeanTranslator,
     "ReduceMax": ReduceMaxTranslator,
     "ReduceMean": ReduceMeanTranslator,
     "ReduceMin": ReduceMinTranslator,

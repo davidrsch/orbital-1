@@ -247,3 +247,65 @@ class TestReduceSumTranslator:
         with pytest.raises(NotImplementedError, match="axis"):
             t.process()
 
+
+class TestReduceLogSumExpTranslator:
+    """Tests for ReduceLogSumExpTranslator."""
+
+    def test_reducelogsumexp_registered(self):
+        from orbital.translation.steps.reducelogsumexp import ReduceLogSumExpTranslator
+        assert TRANSLATORS.get("ReduceLogSumExp") is ReduceLogSumExpTranslator
+
+    def test_reducelogsumexp_group(self):
+        """ReduceLogSumExp over multiple columns uses max-stabilised formula."""
+        import math
+        table = ibis.memtable({"a": [1.0, 0.0], "b": [2.0, 0.0], "c": [3.0, 0.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceLogSumExp <axes: ints = [-1], keepdims: int = 0> (x)
+            }
+        """)
+        variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
+        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"], "c": table["c"]})
+        from orbital.translation.steps.reducelogsumexp import ReduceLogSumExpTranslator
+        t = ReduceLogSumExpTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        # Row 0: log(exp(1) + exp(2) + exp(3)) = log(e + e^2 + e^3)
+        expected0 = math.log(math.exp(1) + math.exp(2) + math.exp(3))
+        # Row 1: log(exp(0) + exp(0) + exp(0)) = log(3)
+        expected1 = math.log(3)
+        assert abs(result[0] - expected0) < 1e-6
+        assert abs(result[1] - expected1) < 1e-6
+
+    def test_reducelogsumexp_single_column_identity(self):
+        """ReduceLogSumExp of a single column: log(exp(x)) == x."""
+        table = ibis.memtable({"x": [2.0, -1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceLogSumExp <axes: ints = [-1]> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.reducelogsumexp import ReduceLogSumExpTranslator
+        t = ReduceLogSumExpTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        t.process()
+        backend = ibis.duckdb.connect()
+        result = list(backend.execute(variables.peek_variable("output")))
+        assert abs(result[0] - 2.0) < 1e-6
+        assert abs(result[1] - (-1.0)) < 1e-6
+
+    def test_reducelogsumexp_unsupported_axis_raises(self):
+        """ReduceLogSumExp on batch axis (0) should raise NotImplementedError."""
+        table = ibis.memtable({"x": [1.0]})
+        model = onnx.parser.parse_graph("""
+            agraph (float[N] x) => (float[N] output) {
+                output = ReduceLogSumExp <axes: ints = [0]> (x)
+            }
+        """)
+        variables = GraphVariables(table, model)
+        from orbital.translation.steps.reducelogsumexp import ReduceLogSumExpTranslator
+        t = ReduceLogSumExpTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+        with pytest.raises(NotImplementedError, match="axis"):
+            t.process()
+

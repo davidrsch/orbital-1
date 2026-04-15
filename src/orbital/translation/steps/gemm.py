@@ -18,8 +18,16 @@ class GemmTranslator(Translator):
         beta = float(self._attributes.get("beta", 1.0))
         trans_a = int(self._attributes.get("transA", 0))
         # transA=1 transposes the A matrix before multiplication.  In the
-        # orbital 1-D tabular context, A is always a flat row vector so the
-        # transpose is a no-op — we deliberately ignore it.
+        # orbital 1-D tabular setting A is always a flat row vector (1 × C),
+        # so transposing it (C × 1) would produce a differently-shaped result.
+        # Orbital only supports row-by-row scoring, so transA is treated as a
+        # no-op.  Models that genuinely require transA=1 on a 2-D batch are
+        # not supported; raise if encountered to avoid silent wrong results.
+        if trans_a:
+            raise NotImplementedError(
+                "Gemm: transA=1 is not supported in the orbital tabular context "
+                "(A is a row vector; transposing it changes the output shape)."
+            )
         trans_b = int(self._attributes.get("transB", 0))
 
         b_tensor = self._variables.get_initializer(self.inputs[1])
