@@ -902,3 +902,14 @@ class TestVariadicMeanTranslator:
         with pytest.raises(ValueError, match="same shape"):
             t.process()
 
+
+# ---------------------------------------------------------------------------
+# Aliases required by TestStepCoverage: ONNX op key names ("Sum", "Max", etc.)
+# differ from the implementation class names ("VariadicSum", ...).
+# TestStepCoverage expects Test{op_key}Translator to exist.
+# ---------------------------------------------------------------------------
+TestSumTranslator = TestVariadicSumTranslator
+TestMaxTranslator = TestVariadicMaxTranslator
+TestMinTranslator = TestVariadicMinTranslator
+TestMeanTranslator = TestVariadicMeanTranslator
+

@@ -39,9 +39,6 @@ class ConvTransposeTranslator(Translator):
         strides = self._attributes.get("strides", [1])
         output_padding = self._attributes.get("output_padding", [0])
 
-        if group != 1:
-            raise NotImplementedError("ConvTranspose: only group=1 is supported.")
-
         # ── Extract weights ──────────────────────────────────────────────────
         w_tensor = self._variables.get_initializer(self.inputs[1])
         if w_tensor is None:
@@ -54,8 +51,18 @@ class ConvTransposeTranslator(Translator):
                 f"ConvTranspose: only 1-D (3-D weight tensor) is supported;"
                 f" got weight shape {w_dims}."
             )
-        # ConvTranspose weight layout: (C_in, C_out, kW)
-        c_in, c_out, k_w = w_dims
+        # ConvTranspose weight layout: (C_in, C_out_per_group, kW)
+        c_in, c_out_raw, k_w = w_dims
+        if group == 1:
+            c_out = c_out_raw
+        elif group == c_in:
+            # Depthwise: each input channel ci maps to c_out_raw output channels.
+            c_out = c_in * c_out_raw
+        else:
+            raise NotImplementedError(
+                f"ConvTranspose: group={group} is not supported. "
+                "Only group=1 (standard) and group=C_in (depthwise) are supported."
+            )
 
         w_flat = self._variables.get_initializer_value(self.inputs[1])
         if w_flat is None or not isinstance(w_flat, (list, tuple)):
@@ -121,36 +128,59 @@ class ConvTransposeTranslator(Translator):
                 f" pads=[{pad_l},{pad_r}], output_padding={out_pad}."
             )
 
-        # W[c_in, c_out, k] → flat index (c_in * c_out + c_out_idx) * k_w + k
-        def w_val(ci: int, co: int, k: int) -> float:
-            return float(w_flat[(ci * c_out + co) * k_w + k])
+        # W[c_in, c_out_raw, k] → flat index (ci * c_out_raw + co_local) * k_w + k
+        def w_val(ci: int, co_local: int, k: int) -> float:
+            return float(w_flat[(ci * c_out_raw + co_local) * k_w + k])
 
         # ── Build output expressions ─────────────────────────────────────────
-        # For each output position o and output channel co:
-        #   Y[co, o] = sum over ci, k: X[ci, i] * W[ci, co, k]
+        # group=1:     Y[co, o] = sum over ci, k: X[ci, i] * W[ci, co, k]
+        # depthwise:   Y[co, o] = sum over k: X[ci, i] * W[ci, co_local, k]
         #   where i = (o + pad_l - k * dil) / stride  (integer, in [0, w_in))
         results: dict[str, ibis.expr.types.Value] = {}
-        for co in range(c_out):
-            b = float(bias_flat[co]) if bias_flat else 0.0
-            for o in range(w_out):
-                terms = []
-                for k in range(k_w):
-                    # dil == 1, so: i * stride = o + pad_l - k
-                    numerator = o + pad_l - k * dil
-                    if numerator < 0:
-                        continue
-                    if numerator % stride != 0:
-                        continue
-                    i = numerator // stride
-                    if not (0 <= i < w_in):
-                        continue
-                    for ci in range(c_in):
-                        terms.append(inp(ci, i) * w_val(ci, co, k))
-                if terms:
-                    dot = self._optimizer.fold_operation(sum(terms))
-                else:
-                    dot = ibis.literal(0.0)
-                results[f"out_{co}_{o}"] = self._optimizer.fold_operation(dot + b)
+        if group == 1:
+            for co in range(c_out):
+                b = float(bias_flat[co]) if bias_flat else 0.0
+                for o in range(w_out):
+                    terms = []
+                    for k in range(k_w):
+                        numerator = o + pad_l - k * dil
+                        if numerator < 0:
+                            continue
+                        if numerator % stride != 0:
+                            continue
+                        i = numerator // stride
+                        if not (0 <= i < w_in):
+                            continue
+                        for ci in range(c_in):
+                            terms.append(inp(ci, i) * w_val(ci, co, k))
+                    if terms:
+                        dot = self._optimizer.fold_operation(sum(terms))
+                    else:
+                        dot = ibis.literal(0.0)
+                    results[f"out_{co}_{o}"] = self._optimizer.fold_operation(dot + b)
+        else:
+            # Depthwise: group == c_in. Output channel co = ci * c_out_raw + co_local.
+            for ci in range(c_in):
+                for co_local in range(c_out_raw):
+                    co = ci * c_out_raw + co_local
+                    b = float(bias_flat[co]) if bias_flat else 0.0
+                    for o in range(w_out):
+                        terms = []
+                        for k in range(k_w):
+                            numerator = o + pad_l - k * dil
+                            if numerator < 0:
+                                continue
+                            if numerator % stride != 0:
+                                continue
+                            i = numerator // stride
+                            if not (0 <= i < w_in):
+                                continue
+                            terms.append(inp(ci, i) * w_val(ci, co_local, k))
+                        if terms:
+                            dot = self._optimizer.fold_operation(sum(terms))
+                        else:
+                            dot = ibis.literal(0.0)
+                        results[f"out_{co}_{o}"] = self._optimizer.fold_operation(dot + b)
 
         # Output order: (output_channel, position) — flat index co * w_out + o
         self.set_output(ValueVariablesGroup(results))

@@ -26,7 +26,7 @@ class RMSNormalizationTranslator(NormTranslatorBase):
         """Translate the RMSNormalization node, writing result to the graph."""
         data = self._variables.consume(self.inputs[0])
         scale, _, epsilon = self._extract_scale_bias_epsilon(
-            bias_idx=None, op_name="RMSNormalization"
+            bias_idx=None, op_name="RMSNormalization", epsilon_default=1e-6
         )
 
         if not isinstance(data, VariablesGroup):

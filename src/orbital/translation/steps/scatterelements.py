@@ -32,7 +32,12 @@ class ScatterElementsTranslator(Translator):
 
         if axis != 0:
             raise NotImplementedError(
-                "ScatterElementsTranslator: only axis=0 is supported"
+                f"ScatterElementsTranslator: axis={axis} is not supported. "
+                "Only axis=0 (the default) can be expressed in SQL. "
+                "ScatterElements with arbitrary axis requires mutable tensor indexing "
+                "which is not available in SQL. "
+                "If you need this, please open an issue at "
+                "https://github.com/posit-dev/orbital/issues."
             )
 
         # indices and updates must be constant initializers

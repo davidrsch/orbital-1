@@ -219,9 +219,10 @@ class TestConvTransposeTranslator:
         assert abs(vals[1] - (-2.0)) < 1e-6
 
     def test_convtranspose_group_nonone_raises(self):
-        """ConvTranspose with group > 1 raises NotImplementedError."""
+        """ConvTranspose with unsupported group (not 1 and not C_in) raises NotImplementedError."""
         from orbital.translation.steps.convtranspose import ConvTransposeTranslator
 
+        # group=2 but C_in=1 → group != 1 and group != c_in → must raise
         table = ibis.memtable({"x0": [1.0]})
         W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 1, 1], [1.0])
         node = helper.make_node("ConvTranspose", inputs=["X", "W"], outputs=["Y"])
@@ -241,6 +242,45 @@ class TestConvTransposeTranslator:
             ConvTransposeTranslator(
                 table, graph.node[0], variables, self.optimizer, TranslationOptions()
             ).process()
+
+    def test_convtranspose_depthwise(self):
+        """ConvTranspose with group=C_in (depthwise): each input ch has its own filter.
+
+        C_in=2, C_out_per_group=1, kW=1, group=2 → C_out=2.
+        Weight W[ci, 0, 0] = ci+1: W[0,0,0]=1, W[1,0,0]=2.
+        Output Y[co, 0] = X[co, 0] * W[co, 0, 0].
+        With X=[3.0, 5.0]: Y=[3.0, 10.0].
+        """
+        from orbital.translation.steps.convtranspose import ConvTransposeTranslator
+
+        # Weight shape (C_in=2, C_out_per_group=1, kW=1)
+        W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [2, 1, 1], [1.0, 2.0])
+        node = helper.make_node("ConvTranspose", inputs=["X", "W"], outputs=["Y"])
+        node.attribute.extend([
+            helper.make_attribute("kernel_shape", [1]),
+            helper.make_attribute("group", 2),
+        ])
+        graph = _make_graph_with_inits(
+            node,
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, 2])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [None, 2])],
+            [W_tensor],
+        )
+        table = ibis.memtable({"x0": [3.0], "x1": [5.0]})
+        variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
+        variables["X"] = ValueVariablesGroup({"x0": table["x0"], "x1": table["x1"]})
+
+        ConvTransposeTranslator(
+            table, graph.node[0], variables, self.optimizer, TranslationOptions()
+        ).process()
+
+        result = variables.peek_variable("Y")
+        assert isinstance(result, ValueVariablesGroup)
+        assert len(result) == 2
+
+        backend = ibis.duckdb.connect()
+        vals = [backend.execute(v).tolist()[0] for v in result.values()]
+        assert vals == pytest.approx([3.0, 10.0])
 
 
 # ---------------------------------------------------------------------------

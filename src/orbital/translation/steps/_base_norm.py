@@ -19,6 +19,7 @@ class NormTranslatorBase(Translator):
         scale_idx: int = 1,
         bias_idx: int | None = 2,
         op_name: str | None = None,
+        epsilon_default: float = 1e-5,
     ) -> tuple:
         """Extract scale, optional bias, and epsilon from the ONNX node inputs.
 
@@ -46,7 +47,7 @@ class NormTranslatorBase(Translator):
             a constant initializer.
         """
         name = op_name or type(self).__name__
-        epsilon = float(self._attributes.get("epsilon", 1e-5))
+        epsilon = float(self._attributes.get("epsilon", epsilon_default))
 
         scale = self._variables.get_initializer_value(self.inputs[scale_idx])
         if not isinstance(scale, (list, tuple)):

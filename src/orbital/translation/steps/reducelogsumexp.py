@@ -39,7 +39,6 @@ class ReduceLogSumExpTranslator(_ReduceAxisTranslator):
             max_expr: ibis.expr.types.NumericValue = cols[0]
             for col in cols[1:]:
                 max_expr = ibis.greatest(max_expr, col)
-            shifted_sum = cols[0].exp()
             # max_expr is the row-wise max; subtract it from each column before
             # exponentiating to avoid overflow.
             shifted_sum = (cols[0] - max_expr).exp()

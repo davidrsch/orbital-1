@@ -71,7 +71,7 @@ def _resolve_rnn_activation(
         return _softsign
     elif name_lower == "softplus":
         def _softplus(v):
-            return (ibis.literal(1.0) + v.exp()).log()
+            return (ibis.literal(1.0) + v.exp()).ln()
         return _softplus
     elif name_lower == "affine":
         a = float(alpha) if alpha is not None else 1.0
