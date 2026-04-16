@@ -122,6 +122,7 @@ class ScatterElementsTranslator(Translator):
             self.set_output(results[0])
         else:
             self.set_output(
-                ValueVariablesGroup({f"out_{i}": results[i] for i in range(len(results))})
+                ValueVariablesGroup(
+                    {f"out_{i}": results[i] for i in range(len(results))}
+                )
             )
-

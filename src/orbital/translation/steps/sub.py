@@ -28,7 +28,9 @@ class SubTranslator(BinaryElementwiseTranslator):
         """Performs the translation and set the output variable."""
         # https://onnx.ai/onnx/operators/onnx__Sub.html
         if len(self._inputs) != 2:
-            raise ValueError(f"Sub: expected exactly 2 inputs, got {len(self._inputs)}.")
+            raise ValueError(
+                f"Sub: expected exactly 2 inputs, got {len(self._inputs)}."
+            )
 
         first_raw = self._variables.consume(self._inputs[0])
         second_raw = self._variables.consume(self._inputs[1])

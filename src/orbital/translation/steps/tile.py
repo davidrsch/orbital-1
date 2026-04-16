@@ -31,9 +31,7 @@ class TileTranslator(Translator):
         # ── Read repeats (always the second input, a constant) ─────────────
         repeats_raw = self._variables.get_initializer_value(self.inputs[1])
         if repeats_raw is None:
-            raise NotImplementedError(
-                "Tile: 'repeats' must be a constant initializer."
-            )
+            raise NotImplementedError("Tile: 'repeats' must be a constant initializer.")
         repeats = [int(r) for r in repeats_raw]
 
         ndim = len(repeats)

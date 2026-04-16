@@ -61,14 +61,12 @@ class LpNormalizationTranslator(Translator):
             # p == 2: norm = sqrt(sum_c x_c^2)
             norm_expr = cols[0] ** 2
             for col in cols[1:]:
-                norm_expr = norm_expr + col ** 2
+                norm_expr = norm_expr + col**2
             norm_expr = norm_expr ** ibis.literal(0.5)
 
         result = NumericVariablesGroup(
             {
-                field: self._optimizer.fold_operation(
-                    col / norm_expr
-                )
+                field: self._optimizer.fold_operation(col / norm_expr)
                 for field, col in zip(fields, cols)
             }
         )

@@ -11,9 +11,8 @@ References
 https://onnx.ai/onnx/operators/onnx__ReduceLogSum.html
 """
 
-
-from ._base_reduce import _ReduceAxisTranslator
 from ..variables import NumericVariablesGroup, VariablesGroup
+from ._base_reduce import _ReduceAxisTranslator
 
 
 class ReduceLogSumTranslator(_ReduceAxisTranslator):
@@ -29,7 +28,9 @@ class ReduceLogSumTranslator(_ReduceAxisTranslator):
             data = NumericVariablesGroup(data)
             cols = list(data.values())
             if not cols:
-                raise ValueError("ReduceLogSum: input group must have at least one column.")
+                raise ValueError(
+                    "ReduceLogSum: input group must have at least one column."
+                )
             sum_expr = cols[0]
             for col in cols[1:]:
                 sum_expr = sum_expr + col

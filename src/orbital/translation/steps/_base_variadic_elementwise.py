@@ -56,9 +56,7 @@ class _VariadicElementwiseTranslator(Translator):
 
         if isinstance(first, VariablesGroup):
             # All inputs must be VariablesGroups with matching column counts.
-            groups = [
-                list(NumericVariablesGroup(x).values()) for x in raw_inputs
-            ]
+            groups = [list(NumericVariablesGroup(x).values()) for x in raw_inputs]
             n_cols = len(groups[0])
             for i, g in enumerate(groups[1:], 1):
                 if len(g) != n_cols:

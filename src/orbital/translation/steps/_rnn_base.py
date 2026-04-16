@@ -39,45 +39,59 @@ def _resolve_rnn_activation(
     elif name_lower == "tanh":
         return _tanh
     elif name_lower == "relu":
+
         def _relu(v):
             return ibis.greatest(v, ibis.literal(0.0))
+
         return _relu
     elif name_lower == "hardsigmoid":
         a = float(alpha) if alpha is not None else 0.2
         b = float(beta) if beta is not None else 0.5
+
         def _hardsig(v):
             return ibis.greatest(
                 ibis.literal(0.0),
                 ibis.least(ibis.literal(1.0), ibis.literal(a) * v + ibis.literal(b)),
             )
+
         return _hardsig
     elif name_lower == "leakyrelu":
         a = float(alpha) if alpha is not None else 0.01
+
         def _leaky(v):
             return ibis.ifelse(v >= ibis.literal(0.0), v, ibis.literal(a) * v)
+
         return _leaky
     elif name_lower == "elu":
         a = float(alpha) if alpha is not None else 1.0
+
         def _elu(v):
             return ibis.ifelse(
                 v >= ibis.literal(0.0),
                 v,
                 ibis.literal(a) * (v.exp() - ibis.literal(1.0)),
             )
+
         return _elu
     elif name_lower == "softsign":
+
         def _softsign(v):
             return v / (ibis.literal(1.0) + v.abs())
+
         return _softsign
     elif name_lower == "softplus":
+
         def _softplus(v):
             return (ibis.literal(1.0) + v.exp()).ln()
+
         return _softplus
     elif name_lower == "affine":
         a = float(alpha) if alpha is not None else 1.0
         b = float(beta) if beta is not None else 0.0
+
         def _affine(v):
             return ibis.literal(a) * v + ibis.literal(b)
+
         return _affine
     else:
         raise NotImplementedError(
@@ -157,19 +171,13 @@ def _write_sequence_outputs(
     # Y: full sequence [seq_len, num_directions, batch, H]
     if output_names and output_names[0]:
         y_group = ValueVariablesGroup(
-            {
-                f"out_Y_{t}_{h}": all_H[t][h]
-                for t in range(T)
-                for h in range(H)
-            }
+            {f"out_Y_{t}_{h}": all_H[t][h] for t in range(T) for h in range(H)}
         )
         variables[output_names[0]] = y_group
 
     # Y_h: final hidden state [num_directions, batch, H]
     if len(output_names) > 1 and output_names[1]:
-        y_h_group = ValueVariablesGroup(
-            {f"out_Yh_{h}": H_state[h] for h in range(H)}
-        )
+        y_h_group = ValueVariablesGroup({f"out_Yh_{h}": H_state[h] for h in range(H)})
         variables[output_names[1]] = y_h_group
 
 

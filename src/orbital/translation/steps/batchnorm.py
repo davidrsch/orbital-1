@@ -4,8 +4,8 @@ import typing
 
 import ibis
 
-from ._base_norm import NormTranslatorBase
 from ..variables import NumericVariablesGroup, VariablesGroup
+from ._base_norm import NormTranslatorBase
 
 
 class BatchNormalizationTranslator(NormTranslatorBase):

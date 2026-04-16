@@ -14,7 +14,6 @@ Weight layout (ONNX)
 
 Limitations (raises :class:`NotImplementedError` otherwise)
 ------------------------------------------------------------
-* Forward direction only (``direction="forward"``).
 * Default activation only (``Tanh``).
 * ``sequence_lens`` (input[4]) is not supported.
 * Non-zero ``initial_h`` (input[5]) is not supported.
@@ -28,7 +27,12 @@ import ibis
 
 from ..translator import Translator
 from ..variables import VariablesGroup
-from ._rnn_base import _get_flat_weights, _resolve_rnn_activation, _write_bidir_sequence_outputs, _write_sequence_outputs
+from ._rnn_base import (
+    _get_flat_weights,
+    _resolve_rnn_activation,
+    _write_bidir_sequence_outputs,
+    _write_sequence_outputs,
+)
 
 
 class RNNTranslator(Translator):
@@ -140,7 +144,9 @@ class RNNTranslator(Translator):
             def bias_rec(h: int) -> float:
                 return float(b_flat[b_off + H + h]) if b_flat else 0.0
 
-            H_st: list[ibis.expr.types.NumericValue] = [ibis.literal(0.0) for _ in range(H)]
+            H_st: list[ibis.expr.types.NumericValue] = [
+                ibis.literal(0.0) for _ in range(H)
+            ]
             all_H_dir: list[list[ibis.expr.types.NumericValue]] = []
 
             for t in range(len(x_seq) // I):
@@ -184,8 +190,12 @@ class RNNTranslator(Translator):
             all_H_bwd_rev, H_state_bwd = _run_direction(1, x_bwd, _act_fn_bwd)
             all_H_bwd = list(reversed(all_H_bwd_rev))
             _write_bidir_sequence_outputs(
-                self._variables, outputs,
-                all_H_fwd, all_H_bwd, H_state_fwd, H_state_bwd,
+                self._variables,
+                outputs,
+                all_H_fwd,
+                all_H_bwd,
+                H_state_fwd,
+                H_state_bwd,
             )
         else:
             all_H_fwd, H_state_fwd = _run_direction(0, x_exprs, _act_fn)

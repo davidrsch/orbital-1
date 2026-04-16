@@ -1,9 +1,8 @@
 """Translator for the Squeeze operation."""
 
 # UnsqueezeTranslator lives in its own module; re-exported here for compatibility.
-from .unsqueeze import UnsqueezeTranslator as UnsqueezeTranslator  # noqa: F401
-
 from ..translator import Translator
+from .unsqueeze import UnsqueezeTranslator as UnsqueezeTranslator  # noqa: F401
 
 
 class SqueezeTranslator(Translator):
@@ -15,4 +14,3 @@ class SqueezeTranslator(Translator):
         # In a columnar representation, removing a size-1 dimension is a pass-through.
         data = self._variables.consume(self.inputs[0])
         self.set_output(data)
-

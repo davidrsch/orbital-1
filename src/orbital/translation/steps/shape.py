@@ -53,4 +53,3 @@ class ShapeTranslator(Translator):
 
         # Return the feature count as a static integer literal
         self.set_output(ibis.literal(n_cols))
-

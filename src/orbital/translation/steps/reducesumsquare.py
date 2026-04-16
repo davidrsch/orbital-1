@@ -11,8 +11,8 @@ References
 https://onnx.ai/onnx/operators/onnx__ReduceSumSquare.html
 """
 
-from ._base_reduce import _ReduceAxisTranslator
 from ..variables import NumericVariablesGroup, VariablesGroup
+from ._base_reduce import _ReduceAxisTranslator
 
 
 class ReduceSumSquareTranslator(_ReduceAxisTranslator):
@@ -33,8 +33,8 @@ class ReduceSumSquareTranslator(_ReduceAxisTranslator):
                 )
             sum_sq = cols[0] ** 2
             for col in cols[1:]:
-                sum_sq = sum_sq + col ** 2
+                sum_sq = sum_sq + col**2
             agg = self._optimizer.fold_operation(sum_sq)
             self._set_reduce_output(agg, keepdims)
         else:
-            self.set_output(self._optimizer.fold_operation(data ** 2))
+            self.set_output(self._optimizer.fold_operation(data**2))

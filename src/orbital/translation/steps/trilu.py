@@ -42,7 +42,11 @@ class TriluTranslator(Translator):
         k = 0
         if len(self.inputs) >= 2 and self.inputs[1]:
             k_val = self._variables.get_initializer_value(self.inputs[1])
-            if k_val is not None and isinstance(k_val, (list, tuple)) and len(k_val) == 1:
+            if (
+                k_val is not None
+                and isinstance(k_val, (list, tuple))
+                and len(k_val) == 1
+            ):
                 k = int(k_val[0])
             elif isinstance(k_val, (int, float)):
                 k = int(k_val)
@@ -52,15 +56,11 @@ class TriluTranslator(Translator):
         if init_tensor is not None:
             shape = list(init_tensor.dims)
             if len(shape) != 2:
-                raise ValueError(
-                    f"Trilu: initializer must be 2-D, got shape {shape}."
-                )
+                raise ValueError(f"Trilu: initializer must be 2-D, got shape {shape}.")
             rows, cols = shape
             flat = self._variables.get_initializer_value(input_name)
             if flat is None or not isinstance(flat, (list, tuple)):
-                raise ValueError(
-                    "Trilu: could not read initializer values."
-                )
+                raise ValueError("Trilu: could not read initializer values.")
             results: dict[str, ibis.Expr] = {}
             for r in range(rows):
                 for c in range(cols):
@@ -86,6 +86,7 @@ class TriluTranslator(Translator):
         # Determine shape: prefer square; users may pass 'rows' via options,
         # but we have no attribute for it.  Default: assume square.
         import math
+
         sqrt_n = math.isqrt(n)
         if sqrt_n * sqrt_n == n:
             rows = cols = sqrt_n

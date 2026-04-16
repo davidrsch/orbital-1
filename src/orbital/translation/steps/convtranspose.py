@@ -180,7 +180,9 @@ class ConvTransposeTranslator(Translator):
                             dot = self._optimizer.fold_operation(sum(terms))
                         else:
                             dot = ibis.literal(0.0)
-                        results[f"out_{co}_{o}"] = self._optimizer.fold_operation(dot + b)
+                        results[f"out_{co}_{o}"] = self._optimizer.fold_operation(
+                            dot + b
+                        )
 
         # Output order: (output_channel, position) — flat index co * w_out + o
         self.set_output(ValueVariablesGroup(results))

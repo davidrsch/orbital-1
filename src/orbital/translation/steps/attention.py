@@ -68,7 +68,7 @@ class AttentionTranslator(Translator):
             if three_h != 3 * H:
                 raise ValueError(
                     f"Attention: weight dim[1]={three_h} inconsistent with "
-                    f"hidden_size={H} (expected 3*H={3*H})."
+                    f"hidden_size={H} (expected 3*H={3 * H})."
                 )
         else:
             if three_h % 3 != 0:
@@ -107,7 +107,9 @@ class AttentionTranslator(Translator):
         if len(self.inputs) > 4 and bool(self.inputs[4]):
             raise NotImplementedError("Attention: past (input[4]) is not supported.")
         if len(self.inputs) > 5 and bool(self.inputs[5]):
-            raise NotImplementedError("Attention: attention_bias (input[5]) is not supported.")
+            raise NotImplementedError(
+                "Attention: attention_bias (input[5]) is not supported."
+            )
         # w_flat layout: [I, 3*H] in row-major order.
         # w_flat[i * 3*H + j] = weight[i, j]
         # Q slice: j in [0, H), K slice: j in [H, 2H), V slice: j in [2H, 3H)
@@ -160,8 +162,7 @@ class AttentionTranslator(Translator):
                 else:
                     max_s = ibis.greatest(*score_row)
                 exp_s = [
-                    self._optimizer.fold_operation((s - max_s).exp())
-                    for s in score_row
+                    self._optimizer.fold_operation((s - max_s).exp()) for s in score_row
                 ]
                 if len(exp_s) == 1:
                     sum_e = exp_s[0]

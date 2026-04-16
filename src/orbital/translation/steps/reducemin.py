@@ -11,9 +11,8 @@ https://onnx.ai/onnx/operators/onnx__ReduceMin.html
 
 import ibis
 
-from ._base_reduce import _ReduceAxisTranslator
 from ..variables import NumericVariablesGroup, VariablesGroup
-
+from ._base_reduce import _ReduceAxisTranslator
 
 
 class ReduceMinTranslator(_ReduceAxisTranslator):

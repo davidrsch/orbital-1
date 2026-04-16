@@ -25,8 +25,8 @@ https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md
 
 import ibis
 
-from ._base_norm import NormTranslatorBase
 from ..variables import NumericVariablesGroup, VariablesGroup
+from ._base_norm import NormTranslatorBase
 
 
 class SkipLayerNormalizationTranslator(NormTranslatorBase):
@@ -98,7 +98,9 @@ class SkipLayerNormalizationTranslator(NormTranslatorBase):
         result = NumericVariablesGroup(
             {
                 field: self._optimizer.fold_operation(
-                    (inter_cols[i] - mean_expr) / std_expr * ibis.literal(float(gamma[i]))
+                    (inter_cols[i] - mean_expr)
+                    / std_expr
+                    * ibis.literal(float(gamma[i]))
                     + ibis.literal(float(beta[i]) if beta is not None else 0.0)
                 )
                 for i, field in enumerate(fields)

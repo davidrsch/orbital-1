@@ -100,7 +100,7 @@ class GRUTranslator(Translator):
                 f"requires exactly {num_dir_expected} direction(s)."
             )
         if three_h != 3 * H:
-            raise ValueError(f"GRU: W dim[1]={three_h} expected 3*hidden_size={3*H}.")
+            raise ValueError(f"GRU: W dim[1]={three_h} expected 3*hidden_size={3 * H}.")
 
         # ── Extract R [1, 3H, H] ──────────────────────────────────────────
         r_flat, _ = _get_flat_weights(self._variables, self.inputs[2], "GRU")
@@ -184,7 +184,9 @@ class GRUTranslator(Translator):
             def bias_rec(g: int, h: int) -> float:
                 return float(b_flat[b_off + 3 * H + g * H + h]) if b_flat else 0.0
 
-            H_st: list[ibis.expr.types.NumericValue] = [ibis.literal(0.0) for _ in range(H)]
+            H_st: list[ibis.expr.types.NumericValue] = [
+                ibis.literal(0.0) for _ in range(H)
+            ]
             all_H_dir: list[list[ibis.expr.types.NumericValue]] = []
 
             for t in range(len(x_seq) // I):
@@ -194,7 +196,10 @@ class GRUTranslator(Translator):
                     self._optimizer.fold_operation(
                         sum(
                             [x_t[i] * w_val(self._GATE_Z, h, i) for i in range(I)]
-                            + [H_st[hid] * r_val(self._GATE_Z, h, hid) for hid in range(H)]
+                            + [
+                                H_st[hid] * r_val(self._GATE_Z, h, hid)
+                                for hid in range(H)
+                            ]
                         )
                         + bias_in(self._GATE_Z, h)
                         + bias_rec(self._GATE_Z, h)
@@ -206,7 +211,10 @@ class GRUTranslator(Translator):
                     self._optimizer.fold_operation(
                         sum(
                             [x_t[i] * w_val(self._GATE_R, h, i) for i in range(I)]
-                            + [H_st[hid] * r_val(self._GATE_R, h, hid) for hid in range(H)]
+                            + [
+                                H_st[hid] * r_val(self._GATE_R, h, hid)
+                                for hid in range(H)
+                            ]
                         )
                         + bias_in(self._GATE_R, h)
                         + bias_rec(self._GATE_R, h)
@@ -225,7 +233,8 @@ class GRUTranslator(Translator):
                             sum(
                                 [x_t[i] * w_val(self._GATE_H, h, i) for i in range(I)]
                                 + [
-                                    (r_gate[hid] * H_st[hid]) * r_val(self._GATE_H, h, hid)
+                                    (r_gate[hid] * H_st[hid])
+                                    * r_val(self._GATE_H, h, hid)
                                     for hid in range(H)
                                 ]
                             )
@@ -296,8 +305,12 @@ class GRUTranslator(Translator):
             )
             all_H_bwd = list(reversed(all_H_bwd_rev))
             _write_bidir_sequence_outputs(
-                self._variables, outputs,
-                all_H_fwd, all_H_bwd, H_state_fwd, H_state_bwd,
+                self._variables,
+                outputs,
+                all_H_fwd,
+                all_H_bwd,
+                H_state_fwd,
+                H_state_bwd,
             )
         else:  # forward
             all_H_fwd, H_state_fwd = _run_direction(

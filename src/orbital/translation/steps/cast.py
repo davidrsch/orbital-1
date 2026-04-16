@@ -1,8 +1,6 @@
 """Translator for the Cast operation."""
 
 # CastLikeTranslator lives in its own module; re-exported here for compatibility.
-from .castlike import CastLikeTranslator as CastLikeTranslator  # noqa: F401
-
 import typing
 
 import ibis
@@ -10,6 +8,7 @@ import onnx
 
 from ..translator import Translator
 from ..variables import ValueVariablesGroup, VariablesGroup
+from .castlike import CastLikeTranslator as CastLikeTranslator  # noqa: F401
 
 ONNX_TYPES_TO_IBIS: dict[int, ibis.expr.datatypes.DataType] = {
     onnx.TensorProto.FLOAT: ibis.expr.datatypes.float32,  # 1: FLOAT
@@ -78,5 +77,3 @@ class CastTranslator(Translator):
             raise ValueError(
                 f"Cast: expected a column group or a single column. Got {type(expr)}"
             )
-
-

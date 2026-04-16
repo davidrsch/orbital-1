@@ -74,7 +74,9 @@ class LSTMTranslator(Translator):
 
         input_forget = int(self._attributes.get("input_forget", 0))
         if input_forget != 0:
-            raise NotImplementedError("LSTM: input_forget=1 (coupled gates) is not supported.")
+            raise NotImplementedError(
+                "LSTM: input_forget=1 (coupled gates) is not supported."
+            )
 
         hidden_size = int(self._attributes["hidden_size"])
         H = hidden_size
@@ -89,7 +91,7 @@ class LSTMTranslator(Translator):
                 f"requires exactly {num_dir_expected} direction(s)."
             )
         if four_h != 4 * H:
-            raise ValueError(f"LSTM: W dim[1]={four_h} expected 4*hidden_size={4*H}.")
+            raise ValueError(f"LSTM: W dim[1]={four_h} expected 4*hidden_size={4 * H}.")
 
         # ── Extract R [1, 4H, H] ──────────────────────────────────────────
         r_flat, _ = _get_flat_weights(self._variables, self.inputs[2], "LSTM")
@@ -106,7 +108,9 @@ class LSTMTranslator(Translator):
         # ONNX LSTM inputs: [X, W, R, B, sequence_lens, initial_h, initial_c, P]
         # P (peephole) is at index 7, NOT index 4 (sequence_lens).
         if len(self.inputs) > 7 and bool(self.inputs[7]):
-            raise NotImplementedError("LSTM: peephole connections (P input) are not supported.")
+            raise NotImplementedError(
+                "LSTM: peephole connections (P input) are not supported."
+            )
 
         # ── Sequence length and initial state guards ──────────────────────
         # ONNX LSTM inputs: [X, W, R, B, sequence_lens, initial_h, initial_c, P]
@@ -172,8 +176,12 @@ class LSTMTranslator(Translator):
             def bias_rec(g: int, h: int) -> float:
                 return float(b_flat[b_off + 4 * H + g * H + h]) if b_flat else 0.0
 
-            H_st: list[ibis.expr.types.NumericValue] = [ibis.literal(0.0) for _ in range(H)]
-            C_st: list[ibis.expr.types.NumericValue] = [ibis.literal(0.0) for _ in range(H)]
+            H_st: list[ibis.expr.types.NumericValue] = [
+                ibis.literal(0.0) for _ in range(H)
+            ]
+            C_st: list[ibis.expr.types.NumericValue] = [
+                ibis.literal(0.0) for _ in range(H)
+            ]
             all_H_dir: list[list[ibis.expr.types.NumericValue]] = []
 
             for t in range(len(x_seq) // I):
@@ -248,8 +256,12 @@ class LSTMTranslator(Translator):
             all_H_bwd = list(reversed(all_H_bwd_rev))
 
             _write_bidir_sequence_outputs(
-                self._variables, outputs,
-                all_H_fwd, all_H_bwd, H_state_fwd, H_state_bwd,
+                self._variables,
+                outputs,
+                all_H_fwd,
+                all_H_bwd,
+                H_state_fwd,
+                H_state_bwd,
             )
             if len(outputs) > 2 and outputs[2]:
                 self._variables[outputs[2]] = ValueVariablesGroup(

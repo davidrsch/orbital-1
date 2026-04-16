@@ -52,12 +52,18 @@ class SliceTranslator(Translator):
         axes_raw = None
         if len(self.inputs) > 3 and self.inputs[3]:
             axes_raw = self._variables.get_initializer_value(self.inputs[3])
-        axes = [int(v) for v in axes_raw] if axes_raw is not None else list(range(len(starts)))
+        axes = (
+            [int(v) for v in axes_raw]
+            if axes_raw is not None
+            else list(range(len(starts)))
+        )
 
         steps_raw = None
         if len(self.inputs) > 4 and self.inputs[4]:
             steps_raw = self._variables.get_initializer_value(self.inputs[4])
-        steps = [int(v) for v in steps_raw] if steps_raw is not None else [1] * len(starts)
+        steps = (
+            [int(v) for v in steps_raw] if steps_raw is not None else [1] * len(starts)
+        )
 
         if len(starts) != 1:
             raise NotImplementedError(

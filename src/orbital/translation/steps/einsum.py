@@ -21,7 +21,6 @@ import ibis
 from ..translator import Translator
 from ..variables import ValueVariablesGroup
 
-
 # ---------------------------------------------------------------------------
 # Supported equation patterns
 # ---------------------------------------------------------------------------
@@ -29,9 +28,7 @@ from ..variables import ValueVariablesGroup
 # Groups: (lhs_free, contract_dim, rhs_free)
 #   "ab,bc->ac"      → lhs_free="a", contract="b", rhs_free="c"
 #   "abc,cd->abd"    → lhs_free="ab", contract="c", rhs_free="d"
-_RE_STANDARD = re.compile(
-    r"^([a-z.]+)([a-z]),\2([a-z]+)->([a-z.]+\3)$"
-)
+_RE_STANDARD = re.compile(r"^([a-z.]+)([a-z]),\2([a-z]+)->([a-z.]+\3)$")
 
 
 def _parse_equation(eq: str) -> tuple[str, str]:
@@ -61,8 +58,8 @@ def _parse_equation(eq: str) -> tuple[str, str]:
             "the right operand (e.g. 'ab,bc->ac' or 'abc,cd->abd')."
         )
     contract_idx = lhs1[-1]
-    free_left = lhs1[:-1]   # e.g. "a", "ab", "_batch_a"
-    free_right = lhs2[1:]   # e.g. "c", "d"
+    free_left = lhs1[:-1]  # e.g. "a", "ab", "_batch_a"
+    free_right = lhs2[1:]  # e.g. "c", "d"
     expected_rhs = free_left + free_right
     if rhs != expected_rhs:
         raise NotImplementedError(
@@ -129,9 +126,7 @@ class EinsumTranslator(Translator):
         left_operand = self._variables.consume(self.inputs[0])
 
         if isinstance(left_operand, dict):
-            left_exprs: list[ibis.expr.types.NumericValue] = list(
-                left_operand.values()
-            )
+            left_exprs: list[ibis.expr.types.NumericValue] = list(left_operand.values())
         else:
             left_exprs = [left_operand]  # type: ignore[list-item]
 
@@ -156,7 +151,5 @@ class EinsumTranslator(Translator):
             self.set_output(results[0])
         else:
             self.set_output(
-                ValueVariablesGroup(
-                    {f"out_{j}": results[j] for j in range(output_dim)}
-                )
+                ValueVariablesGroup({f"out_{j}": results[j] for j in range(output_dim)})
             )

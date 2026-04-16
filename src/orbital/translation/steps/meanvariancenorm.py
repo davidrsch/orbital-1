@@ -20,6 +20,7 @@ import ibis
 from ..translator import Translator
 from ..variables import NumericVariablesGroup, VariablesGroup
 
+
 class MeanVarianceNormalizationTranslator(Translator):
     """Translate the ONNX MeanVarianceNormalization operator."""
 
@@ -38,9 +39,7 @@ class MeanVarianceNormalizationTranslator(Translator):
         data = self._variables.consume(self.inputs[0])
 
         if not isinstance(data, VariablesGroup):
-            raise ValueError(
-                "MeanVarianceNormalization: input must be a column group."
-            )
+            raise ValueError("MeanVarianceNormalization: input must be a column group.")
 
         data = NumericVariablesGroup(data)
         fields = list(data.keys())

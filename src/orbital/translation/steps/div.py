@@ -39,7 +39,9 @@ class DivTranslator(BinaryElementwiseTranslator):
         # Try constant initializer; fall back to a variable for
         # element-wise variable÷variable division.
         second_arg = self._variables.consume(self._inputs[1])
-        if second_arg is None or not isinstance(second_arg, (list, tuple, ibis.Expr, VariablesGroup)):
+        if second_arg is None or not isinstance(
+            second_arg, (list, tuple, ibis.Expr, VariablesGroup)
+        ):
             raise NotImplementedError(
                 "Div: Second input (divisor) must be a constant list or a variable column/group."
             )
@@ -51,7 +53,9 @@ class DivTranslator(BinaryElementwiseTranslator):
                 struct_fields = list(first_operand.keys())
                 for value in first_operand.values():
                     if not isinstance(value, ibis.expr.types.NumericValue):
-                        raise ValueError("Div: The first operand must be a numeric value.")
+                        raise ValueError(
+                            "Div: The first operand must be a numeric value."
+                        )
 
                 first_operand = typing.cast(
                     dict[str, ibis.expr.types.NumericValue], first_operand
@@ -59,7 +63,9 @@ class DivTranslator(BinaryElementwiseTranslator):
                 if len(second_arg) == 1:
                     divisor = second_arg[0]
                     if not isinstance(divisor, (int, float)):
-                        raise ValueError("Div: The second operand must be a numeric value.")
+                        raise ValueError(
+                            "Div: The second operand must be a numeric value."
+                        )
                     self.set_output(
                         ValueVariablesGroup(
                             {
@@ -112,9 +118,7 @@ class DivTranslator(BinaryElementwiseTranslator):
                 first_num = NumericVariablesGroup(first_operand)
                 if len(s_vals) == 1:
                     # broadcast: divide each column by the single divisor column
-                    divisor_expr = typing.cast(
-                        ibis.expr.types.NumericValue, s_vals[0]
-                    )
+                    divisor_expr = typing.cast(ibis.expr.types.NumericValue, s_vals[0])
                     self.set_output(
                         ValueVariablesGroup(
                             {

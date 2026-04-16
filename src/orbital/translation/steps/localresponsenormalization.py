@@ -61,7 +61,7 @@ class LRNTranslator(Translator):
 
             sq_sum = window_cols[0] ** 2
             for wc in window_cols[1:]:
-                sq_sum = sq_sum + wc ** 2
+                sq_sum = sq_sum + wc**2
 
             denom = (
                 ibis.literal(k) + ibis.literal(alpha_over_size) * sq_sum

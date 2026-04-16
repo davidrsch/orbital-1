@@ -94,6 +94,7 @@ class ConvTranslator(Translator):
                 f" by C_in={c_in}."
             )
         w_in = total_in // c_in
+
         # X[c, w] → flat index c * w_in + w
         def inp(c: int, w: int) -> ibis.expr.types.Value:
             return input_exprs[c * w_in + w]
