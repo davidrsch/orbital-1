@@ -18,46 +18,12 @@ from orbital.translation.variables import (
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
 from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
-
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    '''Create an ONNX GraphProto with given node, I/O specs, and initializers.'''
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
 
 class TestSoftmaxTranslator:
-
     def test_softmax_translator_single_input(self):
         """Test SoftmaxTranslator with a single numeric input."""
         table = ibis.memtable({"input": [2.0, 3.0, 4.0]})
@@ -217,18 +183,20 @@ class TestSoftmaxTranslator:
 
 # MLP activation/matrix translators — full tests in test_mlp.py
 
+
 class TestReluTranslator:
     """Tests for ReluTranslator — see test_mlp.py for comprehensive tests."""
-
 
     def test_relu_registered(self):
         """Verify ReluTranslator is registered in TRANSLATORS."""
         from orbital.translation.steps.relu import ReluTranslator
+
         assert TRANSLATORS.get("Relu") is ReluTranslator
 
     def test_relu_correctness(self):
         """Relu clamps negative values to 0 and passes positive values through."""
         from orbital.translation.steps.relu import ReluTranslator
+
         table = ibis.memtable({"input": [-2.0, 0.0, 3.0]})
         model = onnx.parser.parse_graph("""
             agraph (float[N] input) => (float[N] output) {
@@ -239,15 +207,16 @@ class TestReluTranslator:
         ReluTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
-        result = ibis.duckdb.connect().execute(
-            variables.peek_variable("output")
-        ).tolist()
+        result = (
+            ibis.duckdb.connect().execute(variables.peek_variable("output")).tolist()
+        )
         assert result == [0.0, 0.0, 3.0]
 
     def test_relu_non_numeric_raises(self):
         """Relu raises ValueError when the input variable is non-numeric."""
         import pytest
         from orbital.translation.steps.relu import ReluTranslator
+
         table = ibis.memtable({"input": [1.0]})
         model = onnx.parser.parse_graph("""
             agraph (float[N] input) => (float[N] output) {
@@ -262,4 +231,3 @@ class TestReluTranslator:
             ReluTranslator(
                 table, model.node[0], variables, self.optimizer, TranslationOptions()
             ).process()
-

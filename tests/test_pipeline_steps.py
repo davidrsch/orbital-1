@@ -55,7 +55,8 @@ class TestStepCoverage:
                     existing_test_classes.update(
                         name
                         for name in dir(mod)
-                        if name.startswith("Test") and isinstance(getattr(mod, name), type)
+                        if name.startswith("Test")
+                        and isinstance(getattr(mod, name), type)
                     )
                 except Exception:
                     pass  # ignore import errors in sibling files
@@ -76,5 +77,3 @@ class TestStepCoverage:
                 f"Add a test class for each step to test_pipeline_steps.py or a "
                 f"test_steps_*.py sibling file."
             )
-
-

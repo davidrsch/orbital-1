@@ -17,56 +17,24 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
 
 class TestGemmTranslator:
     """Tests for GemmTranslator — see test_mlp.py for comprehensive tests."""
 
-
     def test_gemm_registered(self):
         """Verify GemmTranslator is registered in TRANSLATORS."""
         from orbital.translation.steps.gemm import GemmTranslator
+
         assert TRANSLATORS.get("Gemm") is GemmTranslator
 
     def test_gemm_correctness(self):
         """Y = A @ B^T + C; verifies Gemm with transB=1."""
         from orbital.translation.steps.gemm import GemmTranslator
+
         table = ibis.memtable({"h0": [1.0, 2.0], "h1": [3.0, 4.0]})
         model = onnx.parser.parse_graph("""
             agraph (float[N] input) => (float[N] output)
@@ -96,9 +64,12 @@ class TestGemmTranslator:
         Regression test: previously raised IndexError when accessing self.inputs[2].
         """
         from orbital.translation.steps.gemm import GemmTranslator
+
         table = ibis.memtable({"h0": [1.0, 2.0], "h1": [3.0, 4.0]})
         # 2-input Gemm: Y = A @ B^T  (no C)
-        B_tensor = helper.make_tensor("B", TensorProto.FLOAT, [2, 2], [2.0, 0.0, 0.0, 3.0])
+        B_tensor = helper.make_tensor(
+            "B", TensorProto.FLOAT, [2, 2], [2.0, 0.0, 0.0, 3.0]
+        )
         node = helper.make_node(
             "Gemm",
             inputs=["A", "B"],
@@ -131,6 +102,7 @@ class TestGemmTranslator:
         the computation is identical to transA=0 for our tabular use-case.
         """
         from orbital.translation.steps.gemm import GemmTranslator
+
         # 2 features; B stored row-major [2, 2]; transA=1, transB=0
         # Y_j = sum_i(a_i * B[i,j]) so [1,2]@[[2,3],[4,5]] = [10, 13]
         table = ibis.memtable({"h0": [1.0], "h1": [2.0]})
@@ -170,8 +142,11 @@ class TestGemmTranslator:
         produces the correct output (identity matrix → output equals input).
         """
         from orbital.translation.steps.gemm import GemmTranslator
+
         table = ibis.memtable({"h0": [1.0], "h1": [2.0]})
-        B_tensor = helper.make_tensor("B", TensorProto.FLOAT, [2, 2], [1.0, 0.0, 0.0, 1.0])
+        B_tensor = helper.make_tensor(
+            "B", TensorProto.FLOAT, [2, 2], [1.0, 0.0, 0.0, 1.0]
+        )
         node = helper.make_node(
             "Gemm",
             inputs=["A", "B"],
@@ -196,4 +171,3 @@ class TestGemmTranslator:
         vals = [backend.execute(v).tolist()[0] for v in result.values()]
         assert abs(vals[0] - 1.0) < 1e-6  # h0 * 1 + h1 * 0 = 1.0
         assert abs(vals[1] - 2.0) < 1e-6  # h0 * 0 + h1 * 1 = 2.0
-

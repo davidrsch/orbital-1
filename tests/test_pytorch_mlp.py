@@ -62,9 +62,12 @@ def _torch_predict(model: nn.Module, arr: np.ndarray) -> np.ndarray:
     return out.flatten()
 
 
-def _sql_predict_regression(onnx_model: onnx.ModelProto, features: dict, X: pd.DataFrame) -> np.ndarray:
+def _sql_predict_regression(
+    onnx_model: onnx.ModelProto, features: dict, X: pd.DataFrame
+) -> np.ndarray:
     """Translate an ONNX regression model to SQL and execute it against DuckDB."""
     import duckdb
+
     conn = duckdb.connect(":memory:")
     parsed = ParsedPipeline._from_onnx_model(onnx_model, features)
     sql = orbital.export_sql("data", parsed, dialect="duckdb")
@@ -245,9 +248,9 @@ class _FeatureMeanModel(nn.Module):
         self.fc2 = nn.Linear(1, 1)
 
     def forward(self, x):
-        h = torch.relu(self.fc1(x))          # (N, hidden)
+        h = torch.relu(self.fc1(x))  # (N, hidden)
         pooled = h.mean(dim=1, keepdim=True)  # (N, 1) — mean over hidden units
-        return self.fc2(pooled)               # (N, 1)
+        return self.fc2(pooled)  # (N, 1)
 
 
 class TestGlobalAveragePool:
@@ -285,9 +288,9 @@ class _FeatureMaxModel(nn.Module):
         self.fc2 = nn.Linear(1, 1)
 
     def forward(self, x):
-        h = torch.relu(self.fc1(x))           # (N, hidden)
-        pooled, _ = h.max(dim=1, keepdim=True) # (N, 1) — max over hidden units
-        return self.fc2(pooled)                # (N, 1)
+        h = torch.relu(self.fc1(x))  # (N, hidden)
+        pooled, _ = h.max(dim=1, keepdim=True)  # (N, 1) — max over hidden units
+        return self.fc2(pooled)  # (N, 1)
 
 
 class TestGlobalMaxPool:
@@ -353,12 +356,8 @@ class TestPyTorchMulticlassClassifier:
     def test_multiclass_probabilities_match(self):
         """SQL per-class probabilities match PyTorch Softmax output."""
         with torch.no_grad():
-            expected = self.model(
-                torch.tensor(self.X_np, dtype=torch.float32)
-            ).numpy()
-        sql_pred = _sql_predict_multiclass(
-            self.onnx_model, self.features, self.X_df
-        )
+            expected = self.model(torch.tensor(self.X_np, dtype=torch.float32)).numpy()
+        sql_pred = _sql_predict_multiclass(self.onnx_model, self.features, self.X_df)
         np.testing.assert_allclose(expected, sql_pred, rtol=1e-4, atol=1e-4)
 
 
@@ -377,10 +376,10 @@ class _InstanceNormMLP(nn.Module):
         self.fc2 = nn.Linear(8, 1)
 
     def forward(self, x):
-        h = self.fc1(x)               # (N, 8)
-        h = h.unsqueeze(0)            # (1, N, 8) — treat N as spatial, 1 batch
-        h = self.norm(h)              # normalise over spatial dim (N)
-        h = h.squeeze(0)              # (N, 8)
+        h = self.fc1(x)  # (N, 8)
+        h = h.unsqueeze(0)  # (1, N, 8) — treat N as spatial, 1 batch
+        h = self.norm(h)  # normalise over spatial dim (N)
+        h = h.squeeze(0)  # (N, 8)
         return self.fc2(torch.relu(h))
 
 
@@ -401,6 +400,7 @@ class TestInstanceNormalization:
         dummy = torch.zeros(1, 6)
         onnx_model = _export_to_onnx(self.model, dummy)
         assert onnx_model is not None
+
 
 # ---------------------------------------------------------------------------
 # Test 9: BatchNorm → standalone Activation (Python #36)

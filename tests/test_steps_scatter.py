@@ -17,52 +17,17 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
-
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
 
 class TestScatterElementsTranslator:
     """Tests for ScatterElementsTranslator."""
 
-
     def test_scatterelements_registered(self):
         from orbital.translation.steps.scatterelements import ScatterElementsTranslator
+
         assert TRANSLATORS.get("ScatterElements") is ScatterElementsTranslator
 
     def test_scatterelements_raises(self):
@@ -84,6 +49,7 @@ class TestScatterElementsTranslator:
         table = ibis.memtable({"data": [1.0], "indices": [0], "updates": [2.0]})
         variables = GraphVariables(table, graph)
         from orbital.translation.steps.scatterelements import ScatterElementsTranslator
+
         t = ScatterElementsTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -220,13 +186,12 @@ class TestScatterElementsTranslator:
 # ---------------------------------------------------------------------------
 
 
-
 class TestTileTranslator:
     """Tests for TileTranslator (repeat a feature sequence k times)."""
 
-
     def test_tile_registered(self):
         from orbital.translation.steps.tile import TileTranslator
+
         assert TRANSLATORS.get("Tile") is TileTranslator
 
     def test_tile_rank1_repeat_twice(self):
@@ -243,6 +208,7 @@ class TestTileTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.tile import TileTranslator
+
         TileTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -268,6 +234,7 @@ class TestTileTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
         variables["x"] = NumericVariablesGroup({"a": table["a"]})
         from orbital.translation.steps.tile import TileTranslator
+
         TileTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -291,6 +258,7 @@ class TestTileTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
         variables["x"] = table["a"]
         from orbital.translation.steps.tile import TileTranslator
+
         with pytest.raises(NotImplementedError, match="batch"):
             TileTranslator(
                 table, graph.node[0], variables, self.optimizer, TranslationOptions()
@@ -307,20 +275,19 @@ class TestTileTranslator:
 # ---------------------------------------------------------------------------
 
 
-
 class TestSliceTranslator:
     """Tests for SliceTranslator (extract a contiguous column sub-sequence)."""
 
-
     def test_slice_registered(self):
         from orbital.translation.steps.slice import SliceTranslator
+
         assert TRANSLATORS.get("Slice") is SliceTranslator
 
     def test_slice_basic_range(self):
         """Slice [a, b, c] with starts=[1], ends=[3] returns [b, c]."""
         table = ibis.memtable({"a": [1.0], "b": [2.0], "c": [3.0]})
         starts_t = helper.make_tensor("starts", TensorProto.INT64, [1], [1])
-        ends_t   = helper.make_tensor("ends",   TensorProto.INT64, [1], [3])
+        ends_t = helper.make_tensor("ends", TensorProto.INT64, [1], [3])
         node = helper.make_node("Slice", inputs=["x", "starts", "ends"], outputs=["y"])
         graph = _make_graph_with_inits(
             node,
@@ -329,8 +296,11 @@ class TestSliceTranslator:
             [starts_t, ends_t],
         )
         variables = GraphVariables(ibis.memtable({"x": [0.0]}), graph)
-        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"], "c": table["c"]})
+        variables["x"] = NumericVariablesGroup(
+            {"a": table["a"], "b": table["b"], "c": table["c"]}
+        )
         from orbital.translation.steps.slice import SliceTranslator
+
         SliceTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -344,7 +314,7 @@ class TestSliceTranslator:
         """Slice starts=[0], ends=[INT_MAX] returns all columns."""
         table = ibis.memtable({"a": [5.0], "b": [6.0]})
         starts_t = helper.make_tensor("starts", TensorProto.INT64, [1], [0])
-        ends_t   = helper.make_tensor("ends",   TensorProto.INT64, [1], [2**31 - 1])
+        ends_t = helper.make_tensor("ends", TensorProto.INT64, [1], [2**31 - 1])
         node = helper.make_node("Slice", inputs=["x", "starts", "ends"], outputs=["y"])
         graph = _make_graph_with_inits(
             node,
@@ -355,6 +325,7 @@ class TestSliceTranslator:
         variables = GraphVariables(ibis.memtable({"x": [0.0]}), graph)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.slice import SliceTranslator
+
         SliceTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -368,9 +339,9 @@ class TestSliceTranslator:
         """Slice with step=-1 reverses the selected range."""
         table = ibis.memtable({"a": [1.0], "b": [2.0], "c": [3.0]})
         starts_t = helper.make_tensor("starts", TensorProto.INT64, [1], [2])
-        ends_t   = helper.make_tensor("ends",   TensorProto.INT64, [1], [-1])
-        axes_t   = helper.make_tensor("axes",   TensorProto.INT64, [1], [0])
-        steps_t  = helper.make_tensor("steps",  TensorProto.INT64, [1], [-1])
+        ends_t = helper.make_tensor("ends", TensorProto.INT64, [1], [-1])
+        axes_t = helper.make_tensor("axes", TensorProto.INT64, [1], [0])
+        steps_t = helper.make_tensor("steps", TensorProto.INT64, [1], [-1])
         node = helper.make_node(
             "Slice", inputs=["x", "starts", "ends", "axes", "steps"], outputs=["y"]
         )
@@ -381,8 +352,11 @@ class TestSliceTranslator:
             [starts_t, ends_t, axes_t, steps_t],
         )
         variables = GraphVariables(ibis.memtable({"x": [0.0]}), graph)
-        variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"], "c": table["c"]})
+        variables["x"] = NumericVariablesGroup(
+            {"a": table["a"], "b": table["b"], "c": table["c"]}
+        )
         from orbital.translation.steps.slice import SliceTranslator
+
         SliceTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()

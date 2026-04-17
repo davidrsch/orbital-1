@@ -21,7 +21,6 @@ from orbital.translation.variables import GraphVariables, ValueVariablesGroup
 class TestLSTMTranslator:
     """Tests for the ONNX LSTM translator (forward-direction unrolling)."""
 
-
     def _make_lstm_graph(self, I, H, T, W_data, R_data, B_data=None):
         """Build a minimal ONNX LSTM graph with Y_h output."""
         W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 4 * H, I], W_data)
@@ -48,6 +47,7 @@ class TestLSTMTranslator:
 
     def test_lstm_registered(self):
         from orbital.translation.steps.lstm import LSTMTranslator
+
         assert TRANSLATORS.get("LSTM") is LSTMTranslator
 
     def test_lstm_single_step_zero_weights(self):
@@ -88,7 +88,7 @@ class TestLSTMTranslator:
         # W[gate, unit, input]: set only C-gate (gate 3 in IOFC order = index 3)
         # to 1.0 so c_bar captures the input.
         W_data = [0.0] * (4 * H * I)
-        W_data[3 * H * I] = 1.0   # W_c[0, 0] = 1.0
+        W_data[3 * H * I] = 1.0  # W_c[0, 0] = 1.0
 
         R_data = [0.0] * (4 * H * H)
         # i-gate W = const 3 (large sigmoid  ~1.0), f-gate W = 0
@@ -203,8 +203,8 @@ class TestLSTMTranslator:
 
         I, H, T = 1, 1, 1
         W_data = [0.0] * (4 * H * I)
-        W_data[0 * H * I] = 100.0   # gate 0 = I-gate: force i ≈ 1.0
-        W_data[3 * H * I] = 1.0     # gate 3 = C-gate: c_bar = tanh(x)
+        W_data[0 * H * I] = 100.0  # gate 0 = I-gate: force i ≈ 1.0
+        W_data[3 * H * I] = 1.0  # gate 3 = C-gate: c_bar = tanh(x)
         R_data = [0.0] * (4 * H * H)
 
         graph = self._make_lstm_graph(I, H, T, W_data, R_data)

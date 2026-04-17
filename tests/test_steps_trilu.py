@@ -47,6 +47,7 @@ class TestTriluTranslator:
 
     def test_trilu_registered(self):
         from orbital.translation.steps.trilu import TriluTranslator
+
         assert TRANSLATORS.get("Trilu") is TriluTranslator
 
     def test_trilu_upper_default(self):

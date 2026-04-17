@@ -17,52 +17,17 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
-
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    '''Create an ONNX GraphProto with given node, I/O specs, and initializers.'''
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
-
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
 
 class TestReduceL1Translator:
     """Tests for ReduceL1Translator."""
 
-
     def test_reducel1_registered(self):
         from orbital.translation.steps.reducel1 import ReduceL1Translator
+
         assert TRANSLATORS.get("ReduceL1") is ReduceL1Translator
 
     def test_reducel1_group(self):
@@ -76,6 +41,7 @@ class TestReduceL1Translator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.reducel1 import ReduceL1Translator
+
         ReduceL1Translator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -91,6 +57,7 @@ class TestReduceL1Translator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.reducel1 import ReduceL1Translator
+
         ReduceL1Translator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -106,6 +73,7 @@ class TestReduceL1Translator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.reducel1 import ReduceL1Translator
+
         t = ReduceL1Translator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -116,9 +84,9 @@ class TestReduceL1Translator:
 class TestReduceL2Translator:
     """Tests for ReduceL2Translator."""
 
-
     def test_reducel2_registered(self):
         from orbital.translation.steps.reducel2 import ReduceL2Translator
+
         assert TRANSLATORS.get("ReduceL2") is ReduceL2Translator
 
     def test_reducel2_group(self):
@@ -132,13 +100,14 @@ class TestReduceL2Translator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.reducel2 import ReduceL2Translator
+
         ReduceL2Translator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
         backend = ibis.duckdb.connect()
         result = list(backend.execute(variables.peek_variable("output")))
-        assert abs(result[0] - 5.0) < 1e-9   # sqrt(9+16)
-        assert abs(result[1] - 5.0) < 1e-9   # sqrt(0+25)
+        assert abs(result[0] - 5.0) < 1e-9  # sqrt(9+16)
+        assert abs(result[1] - 5.0) < 1e-9  # sqrt(0+25)
 
     def test_reducel2_single_column(self):
         table = ibis.memtable({"x": [-3.0, 4.0]})
@@ -149,6 +118,7 @@ class TestReduceL2Translator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.reducel2 import ReduceL2Translator
+
         ReduceL2Translator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -166,6 +136,7 @@ class TestReduceL2Translator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.reducel2 import ReduceL2Translator
+
         t = ReduceL2Translator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -181,14 +152,15 @@ class TestReduceL2Translator:
 class TestReduceLogSumTranslator:
     """Tests for ReduceLogSumTranslator."""
 
-
     def test_reducelogsum_registered(self):
         from orbital.translation.steps.reducelogsum import ReduceLogSumTranslator
+
         assert TRANSLATORS.get("ReduceLogSum") is ReduceLogSumTranslator
 
     def test_reducelogsum_group(self):
         """log(1+2+3) = log(6)."""
         import math
+
         table = ibis.memtable({"a": [1.0], "b": [2.0], "c": [3.0]})
         model = onnx.parser.parse_graph("""
             agraph (float[N] x) => (float[N] output) {
@@ -200,6 +172,7 @@ class TestReduceLogSumTranslator:
             {"a": table["a"], "b": table["b"], "c": table["c"]}
         )
         from orbital.translation.steps.reducelogsum import ReduceLogSumTranslator
+
         ReduceLogSumTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -222,9 +195,9 @@ class TestReduceLogSumTranslator:
 class TestReduceSumSquareTranslator:
     """Tests for ReduceSumSquareTranslator."""
 
-
     def test_reducesumsquare_registered(self):
         from orbital.translation.steps.reducesumsquare import ReduceSumSquareTranslator
+
         assert TRANSLATORS.get("ReduceSumSquare") is ReduceSumSquareTranslator
 
     def test_reducesumsquare_group(self):
@@ -238,6 +211,7 @@ class TestReduceSumSquareTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.reducesumsquare import ReduceSumSquareTranslator
+
         ReduceSumSquareTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -262,6 +236,7 @@ class TestReduceProdTranslator:
 
     def test_reduceprod_registered(self):
         from orbital.translation.steps.reduceprod import ReduceProdTranslator
+
         assert TRANSLATORS.get("ReduceProd") is ReduceProdTranslator
 
     def test_reduceprod_group_to_scalar(self):
@@ -275,7 +250,10 @@ class TestReduceProdTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.reduceprod import ReduceProdTranslator
-        t = ReduceProdTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = ReduceProdTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         result = list(backend.execute(variables.peek_variable("output")))
@@ -293,7 +271,10 @@ class TestReduceProdTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.reduceprod import ReduceProdTranslator
-        t = ReduceProdTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = ReduceProdTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         result = variables.peek_variable("output")
         backend = ibis.duckdb.connect()
@@ -311,6 +292,7 @@ class TestReduceProdTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.reduceprod import ReduceProdTranslator
+
         t = ReduceProdTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         )

@@ -237,3 +237,12 @@ def _write_bidir_sequence_outputs(
             }
         )
         variables[output_names[1]] = y_h_group
+
+
+def _validate_rnn_direction(direction: str, op_name: str) -> None:
+    """Raise NotImplementedError if direction is not a valid ONNX RNN direction."""
+    if direction not in ("forward", "reverse", "bidirectional"):
+        raise NotImplementedError(
+            f"{op_name}: direction={direction!r} is not supported; "
+            "must be 'forward', 'reverse', or 'bidirectional'."
+        )

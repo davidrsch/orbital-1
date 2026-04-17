@@ -17,48 +17,14 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
 from orbital.translation.steps.concat import ConcatTranslator
 from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
-
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
 
 class TestFeatureVectorizerTranslator:
-
     def test_featurevectorizer_multiple_inputs_with_dimensions(self):
         """Test vectorizing multiple inputs with inputdimensions attribute."""
         table = ibis.memtable(
@@ -201,9 +167,7 @@ class TestFeatureVectorizerTranslator:
             translator.process()
 
 
-
 class TestConcatTranslator:
-
     def test_concat_two_single_columns(self):
         """Test concatenating two single columns."""
         table = ibis.memtable(
@@ -347,5 +311,3 @@ class TestConcatTranslator:
             NotImplementedError, match="only supports concatenating over columns"
         ):
             translator.process()
-
-

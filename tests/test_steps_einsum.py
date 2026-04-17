@@ -19,7 +19,9 @@ from orbital.translation.variables import GraphVariables, ValueVariablesGroup
 def _make_einsum_graph(equation, x_shape, w_data, w_shape, out_shape):
     """Build a minimal ONNX graph with a single Einsum node."""
     w_tensor = helper.make_tensor("W", TensorProto.FLOAT, w_shape, w_data)
-    node = helper.make_node("Einsum", inputs=["X", "W"], outputs=["Y"], equation=equation)
+    node = helper.make_node(
+        "Einsum", inputs=["X", "W"], outputs=["Y"], equation=equation
+    )
     x_flat_len = 1
     for d in x_shape:
         if d is not None:
@@ -42,6 +44,7 @@ class TestEinsumTranslator:
 
     def test_einsum_registered(self):
         from orbital.translation.steps.einsum import EinsumTranslator
+
         assert TRANSLATORS.get("Einsum") is EinsumTranslator
 
     def test_einsum_matmul_ab_bc_ac(self):

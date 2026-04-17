@@ -17,55 +17,23 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
 
 class TestLayerNormalizationTranslator:
     """Tests for LayerNormalizationTranslator (ONNX opset 17+)."""
 
-
     def test_layernorm_registered(self):
         from orbital.translation.steps.layernorm import LayerNormalizationTranslator
+
         assert TRANSLATORS.get("LayerNormalization") is LayerNormalizationTranslator
 
     def test_layernorm_normalizes_row(self):
         """LayerNorm normalizes a row to mean0, std1 (with scale=1, bias=0)."""
         import math
+
         # Two rows x=[2,4]: mean=3, var=1, (2-3)/sqrt(1+1e-5)=-1/1-1.0
         table = ibis.memtable({"a": [2.0, 10.0], "b": [4.0, 10.0]})
         model = onnx.parser.parse_graph("""
@@ -78,6 +46,7 @@ class TestLayerNormalizationTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.layernorm import LayerNormalizationTranslator
+
         t = LayerNormalizationTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -95,6 +64,7 @@ class TestLayerNormalizationTranslator:
     def test_layernorm_scale_and_bias_applied(self):
         """LayerNorm applies scale and bias after normalization."""
         import math
+
         table = ibis.memtable({"a": [2.0], "b": [4.0]})
         model = onnx.parser.parse_graph("""
             agraph (float[N] x) => (float[N] output)
@@ -106,6 +76,7 @@ class TestLayerNormalizationTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.layernorm import LayerNormalizationTranslator
+
         t = LayerNormalizationTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -140,6 +111,7 @@ class TestLayerNormalizationTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.layernorm import LayerNormalizationTranslator
+
         with pytest.raises(NotImplementedError, match="axis"):
             LayerNormalizationTranslator(
                 table, graph.node[0], variables, self.optimizer, TranslationOptions()
@@ -147,14 +119,21 @@ class TestLayerNormalizationTranslator:
 
 
 class TestInstanceNormalizationTranslator:
-
     def test_instancenorm_registered(self):
-        from orbital.translation.steps.instancenorm import InstanceNormalizationTranslator
-        assert TRANSLATORS.get("InstanceNormalization") is InstanceNormalizationTranslator
+        from orbital.translation.steps.instancenorm import (
+            InstanceNormalizationTranslator,
+        )
+
+        assert (
+            TRANSLATORS.get("InstanceNormalization") is InstanceNormalizationTranslator
+        )
 
     def test_instancenorm_correctness(self):
         """InstanceNorm normalises each row across all channels: (x-mean)/std*scale+bias."""
-        from orbital.translation.steps.instancenorm import InstanceNormalizationTranslator
+        from orbital.translation.steps.instancenorm import (
+            InstanceNormalizationTranslator,
+        )
+
         table = ibis.memtable({"c0": [1.0, 4.0], "c1": [3.0, 4.0]})
         model = onnx.parser.parse_graph("""
             agraph (float[N] X) => (float[N] Y)
@@ -180,15 +159,16 @@ class TestInstanceNormalizationTranslator:
 
 
 class TestGroupNormalizationTranslator:
-
     def test_groupnorm_registered(self):
         from orbital.translation.steps.groupnorm import GroupNormalizationTranslator
+
         assert TRANSLATORS.get("GroupNormalization") is GroupNormalizationTranslator
 
     def test_groupnorm_single_group_correctness(self):
         """GroupNorm with num_groups=1 normalises all channels together (LayerNorm equivalent)."""
         from onnx import helper, TensorProto
         from orbital.translation.steps.groupnorm import GroupNormalizationTranslator
+
         table = ibis.memtable({"c0": [1.0, 4.0], "c1": [3.0, 4.0]})
         node = helper.make_node(
             "GroupNormalization",
@@ -220,5 +200,3 @@ class TestGroupNormalizationTranslator:
 # ---------------------------------------------------------------------------
 # Unit tests: MeanVarianceNormalizationTranslator
 # ---------------------------------------------------------------------------
-
-

@@ -17,47 +17,13 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
 
 class TestRNNTranslator:
     """Tests for the ONNX RNN translator (forward-direction unrolling)."""
-
 
     def _make_rnn_graph(self, I, H, T, W_data, R_data, B_data=None):
         """Build a minimal ONNX RNN graph with Y_h output."""
@@ -85,6 +51,7 @@ class TestRNNTranslator:
 
     def test_rnn_registered(self):
         from orbital.translation.steps.rnn import RNNTranslator
+
         assert TRANSLATORS.get("RNN") is RNNTranslator
 
     def test_rnn_zero_weights_zero_output(self):
@@ -205,8 +172,8 @@ class TestRNNTranslator:
 
         backend = ibis.duckdb.connect()
         vals = [backend.execute(v).tolist()[0] for v in result.values()]
-        assert abs(vals[0] - 1.0) < 1e-9   # relu(1.0) = 1.0
-        assert abs(vals[1] - 0.0) < 1e-9   # relu(-2.0) = 0.0
+        assert abs(vals[0] - 1.0) < 1e-9  # relu(1.0) = 1.0
+        assert abs(vals[1] - 0.0) < 1e-9  # relu(-2.0) = 0.0
 
     def test_unsupported_activation_raises(self):
         """RNN with activations=['Elu'] raises NotImplementedError naming the activation."""
@@ -248,5 +215,3 @@ class TestRNNTranslator:
 # ---------------------------------------------------------------------------
 # Unit tests: MultiHeadAttentionTranslator
 # ---------------------------------------------------------------------------
-
-

@@ -17,50 +17,18 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    '''Create an ONNX GraphProto with given node, I/O specs, and initializers.'''
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
 
 class TestTreeEnsembleClassifierTranslator:
-
     def test_binary_classification_single_tree(self):
         """Test TreeEnsembleClassifier with binary classification and single tree."""
         from onnx import helper, TensorProto
-        from orbital.translation.steps.trees.classifier import TreeEnsembleClassifierTranslator
+        from orbital.translation.steps.trees.classifier import (
+            TreeEnsembleClassifierTranslator,
+        )
 
         table = ibis.memtable({"X": [0.3, 0.7, 0.2]})
 
@@ -126,7 +94,9 @@ class TestTreeEnsembleClassifierTranslator:
     def test_multiclass_classification_single_tree(self):
         """Test TreeEnsembleClassifier with multi-class classification."""
         from onnx import helper, TensorProto
-        from orbital.translation.steps.trees.classifier import TreeEnsembleClassifierTranslator
+        from orbital.translation.steps.trees.classifier import (
+            TreeEnsembleClassifierTranslator,
+        )
 
         table = ibis.memtable({"X": [0.3, 0.7, 0.2]})
 
@@ -189,7 +159,9 @@ class TestTreeEnsembleClassifierTranslator:
     def test_classifier_invalid_input_type(self):
         """Test TreeEnsembleClassifier raises error for invalid input type."""
         from onnx import helper, TensorProto
-        from orbital.translation.steps.trees.classifier import TreeEnsembleClassifierTranslator
+        from orbital.translation.steps.trees.classifier import (
+            TreeEnsembleClassifierTranslator,
+        )
 
         table = ibis.memtable({"X": [0.3, 0.7, 0.2]})
 
@@ -229,18 +201,18 @@ class TestTreeEnsembleClassifierTranslator:
 
         with pytest.raises(
             ValueError,
-            match="TreeEnsembleClassifier: The first operand must be a column or a column group"
+            match="TreeEnsembleClassifier: The first operand must be a column or a column group",
         ):
             translator.process()
 
 
-
 class TestTreeEnsembleRegressorTranslator:
-
     def test_single_tree_regression(self):
         """Test TreeEnsembleRegressor with a single decision tree."""
         from onnx import helper, TensorProto
-        from orbital.translation.steps.trees.regressor import TreeEnsembleRegressorTranslator
+        from orbital.translation.steps.trees.regressor import (
+            TreeEnsembleRegressorTranslator,
+        )
 
         table = ibis.memtable({"X": [0.3, 0.7, 0.2]})
 
@@ -294,7 +266,9 @@ class TestTreeEnsembleRegressorTranslator:
     def test_regression_base_values_applied(self):
         """Test TreeEnsembleRegressor correctly applies base_values."""
         from onnx import helper, TensorProto
-        from orbital.translation.steps.trees.regressor import TreeEnsembleRegressorTranslator
+        from orbital.translation.steps.trees.regressor import (
+            TreeEnsembleRegressorTranslator,
+        )
 
         table = ibis.memtable({"X": [1.0, 2.0, 3.0]})
 
@@ -345,7 +319,9 @@ class TestTreeEnsembleRegressorTranslator:
     def test_regressor_invalid_input_type(self):
         """Test TreeEnsembleRegressor raises error for invalid input type."""
         from onnx import helper, TensorProto
-        from orbital.translation.steps.trees.regressor import TreeEnsembleRegressorTranslator
+        from orbital.translation.steps.trees.regressor import (
+            TreeEnsembleRegressorTranslator,
+        )
 
         table = ibis.memtable({"X": [1.0, 2.0, 3.0]})
 
@@ -382,10 +358,6 @@ class TestTreeEnsembleRegressorTranslator:
 
         with pytest.raises(
             ValueError,
-            match="TreeEnsembleRegressor: The first operand must be a column or a column group"
+            match="TreeEnsembleRegressor: The first operand must be a column or a column group",
         ):
             translator.process()
-
-
-
-

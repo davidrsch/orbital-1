@@ -17,51 +17,17 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
-
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    '''Create an ONNX GraphProto with given node, I/O specs, and initializers.'''
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
 
 class TestEluTranslator:
     """Tests for EluTranslator."""
 
-
     def test_elu_registered(self):
         from orbital.translation.steps.elu import EluTranslator
+
         assert TRANSLATORS.get("Elu") is EluTranslator
 
     def test_elu_positive_unchanged(self):
@@ -74,7 +40,10 @@ class TestEluTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.elu import EluTranslator
-        t = EluTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = EluTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         result = list(backend.execute(variables.peek_variable("output")))
@@ -83,6 +52,7 @@ class TestEluTranslator:
     def test_elu_negative_with_default_alpha(self):
         """ELU with negative input uses alpha*(exp(x)-1) with alpha=1.0."""
         import math
+
         table = ibis.memtable({"x": [-1.0]})
         model = onnx.parser.parse_graph("""
             agraph (float[N] x) => (float[N] output) {
@@ -91,7 +61,10 @@ class TestEluTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.elu import EluTranslator
-        t = EluTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = EluTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         val = backend.execute(variables.peek_variable("output"))[0]
@@ -99,18 +72,18 @@ class TestEluTranslator:
         assert abs(val - expected) < 1e-9
 
 
-
 class TestSeluTranslator:
     """Tests for SeluTranslator."""
 
-
     def test_selu_registered(self):
         from orbital.translation.steps.selu import SeluTranslator
+
         assert TRANSLATORS.get("Selu") is SeluTranslator
 
     def test_selu_positive(self):
         """SELU of positive input = gamma * x."""
         import math
+
         gamma = 1.0507009873554805
         table = ibis.memtable({"x": [1.0, 2.0]})
         model = onnx.parser.parse_graph("""
@@ -120,7 +93,10 @@ class TestSeluTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.selu import SeluTranslator
-        t = SeluTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = SeluTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         result = list(backend.execute(variables.peek_variable("output")))
@@ -130,6 +106,7 @@ class TestSeluTranslator:
     def test_selu_negative(self):
         """SELU of negative input = gamma*(alpha*(exp(x)-1))."""
         import math
+
         alpha = 1.6732631921768188
         gamma = 1.0507009873554805
         table = ibis.memtable({"x": [-1.0]})
@@ -140,7 +117,10 @@ class TestSeluTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.selu import SeluTranslator
-        t = SeluTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = SeluTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         result = backend.execute(variables.peek_variable("output"))[0]
@@ -148,13 +128,12 @@ class TestSeluTranslator:
         assert abs(result - expected) < 1e-9
 
 
-
 class TestCeluTranslator:
     """Tests for CeluTranslator."""
 
-
     def test_celu_registered(self):
         from orbital.translation.steps.celu import CeluTranslator
+
         assert TRANSLATORS.get("Celu") is CeluTranslator
 
     def test_celu_positive_unchanged(self):
@@ -167,10 +146,17 @@ class TestCeluTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.celu import CeluTranslator
-        t = CeluTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = CeluTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
-        assert list(backend.execute(variables.peek_variable("output"))) == [1.0, 2.0, 3.0]
+        assert list(backend.execute(variables.peek_variable("output"))) == [
+            1.0,
+            2.0,
+            3.0,
+        ]
 
     def test_celu_zero_input(self):
         """CELU of 0 = 0."""
@@ -182,19 +168,21 @@ class TestCeluTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.celu import CeluTranslator
-        t = CeluTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = CeluTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         assert abs(backend.execute(variables.peek_variable("output"))[0]) < 1e-9
 
 
-
 class TestHardSwishTranslator:
     """Tests for HardSwishTranslator."""
 
-
     def test_hardswish_registered(self):
         from orbital.translation.steps.hardswish import HardSwishTranslator
+
         assert TRANSLATORS.get("HardSwish") is HardSwishTranslator
 
     def test_hardswish_zero_input(self):
@@ -207,7 +195,10 @@ class TestHardSwishTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.hardswish import HardSwishTranslator
-        t = HardSwishTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = HardSwishTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         assert backend.execute(variables.peek_variable("output"))[0] == 0.0
@@ -222,19 +213,21 @@ class TestHardSwishTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.hardswish import HardSwishTranslator
-        t = HardSwishTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = HardSwishTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         assert backend.execute(variables.peek_variable("output"))[0] == 100.0
 
 
-
 class TestHardTanhTranslator:
     """Tests for HardTanhTranslator."""
 
-
     def test_hardtanh_registered(self):
         from orbital.translation.steps.hardtanh import HardTanhTranslator
+
         assert TRANSLATORS.get("HardTanh") is HardTanhTranslator
 
     def test_hardtanh_clips_low(self):
@@ -247,7 +240,10 @@ class TestHardTanhTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.hardtanh import HardTanhTranslator
-        t = HardTanhTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = HardTanhTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         result = list(backend.execute(variables.peek_variable("output")))
@@ -263,7 +259,10 @@ class TestHardTanhTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.hardtanh import HardTanhTranslator
-        t = HardTanhTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = HardTanhTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         result = list(backend.execute(variables.peek_variable("output")))
@@ -279,7 +278,10 @@ class TestHardTanhTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.hardtanh import HardTanhTranslator
-        t = HardTanhTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = HardTanhTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
         result = list(backend.execute(variables.peek_variable("output")))
@@ -288,6 +290,7 @@ class TestHardTanhTranslator:
     def test_custom_bounds(self):
         """HardTanh with explicit min=-2.0 max=2.5 attributes clips at those bounds."""
         from orbital.translation.steps.hardtanh import HardTanhTranslator
+
         table = ibis.memtable({"x": [-3.0, 0.0, 3.0]})
         node = helper.make_node(
             "HardTanh", inputs=["x"], outputs=["output"], min=-2.0, max=2.5
@@ -310,6 +313,7 @@ class TestHardTanhTranslator:
     def test_default_bounds_unchanged(self):
         """HardTanh with no min/max attributes defaults to clip[-1, 1]."""
         from orbital.translation.steps.hardtanh import HardTanhTranslator
+
         table = ibis.memtable({"x": [-2.0, 0.0, 2.0]})
         model = onnx.parser.parse_graph("""
             agraph (float[N] x) => (float[N] output) {
@@ -329,4 +333,3 @@ class TestHardTanhTranslator:
 # ---------------------------------------------------------------------------
 # New translator tests (Python Issues #30#35)
 # ---------------------------------------------------------------------------
-

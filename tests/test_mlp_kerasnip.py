@@ -37,7 +37,6 @@ from orbital.translation.variables import (
 # ---------------------------------------------------------------------------
 
 
-
 class TestExpTranslator:
     optimizer = Optimizer(enabled=False)
 
@@ -91,11 +90,16 @@ class TestThresholdedReluTranslator:
         """ThresholdedRelu with alpha=2.0: x if x>2 else 0."""
         table = ibis.memtable({"input": [1.0, 2.0, 3.0]})
         node = helper.make_node("ThresholdedRelu", ["input"], ["output"], alpha=2.0)
-        graph = helper.make_graph([node], "g", [
-            helper.make_tensor_value_info("input", TensorProto.FLOAT, [None]),
-        ], [
-            helper.make_tensor_value_info("output", TensorProto.FLOAT, [None]),
-        ])
+        graph = helper.make_graph(
+            [node],
+            "g",
+            [
+                helper.make_tensor_value_info("input", TensorProto.FLOAT, [None]),
+            ],
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT, [None]),
+            ],
+        )
         variables = GraphVariables(table, graph)
         translator = ThresholdedReluTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
@@ -110,11 +114,16 @@ class TestThresholdedReluTranslator:
         """ThresholdedRelu with default alpha=1.0: passthrough for x > 1, else 0."""
         table = ibis.memtable({"input": [0.5, 1.0, 1.5]})
         node = helper.make_node("ThresholdedRelu", ["input"], ["output"])
-        graph = helper.make_graph([node], "g", [
-            helper.make_tensor_value_info("input", TensorProto.FLOAT, [None]),
-        ], [
-            helper.make_tensor_value_info("output", TensorProto.FLOAT, [None]),
-        ])
+        graph = helper.make_graph(
+            [node],
+            "g",
+            [
+                helper.make_tensor_value_info("input", TensorProto.FLOAT, [None]),
+            ],
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT, [None]),
+            ],
+        )
         variables = GraphVariables(table, graph)
         translator = ThresholdedReluTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
@@ -188,18 +197,23 @@ class TestRMSNormalizationTranslator:
         table = ibis.memtable({"input": [0.0], "h0": [3.0], "h1": [4.0]})
         scale = np.array([1.0, 1.0], dtype=np.float32)
         scale_tensor = helper.make_tensor("scale", TensorProto.FLOAT, [2], scale)
-        node = helper.make_node("RMSNormalization", ["input", "scale"], ["output"],
-                                epsilon=0.0)
-        graph = helper.make_graph([node], "rmsnorm_test",
+        node = helper.make_node(
+            "RMSNormalization", ["input", "scale"], ["output"], epsilon=0.0
+        )
+        graph = helper.make_graph(
+            [node],
+            "rmsnorm_test",
             [helper.make_tensor_value_info("input", TensorProto.FLOAT, [None, 2])],
             [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, 2])],
             initializer=[scale_tensor],
         )
         variables = GraphVariables(table, graph)
-        variables["input"] = NumericVariablesGroup({
-            "h0": table["h0"],
-            "h1": table["h1"],
-        })
+        variables["input"] = NumericVariablesGroup(
+            {
+                "h0": table["h0"],
+                "h1": table["h1"],
+            }
+        )
         translator = RMSNormalizationTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -219,18 +233,23 @@ class TestRMSNormalizationTranslator:
         table = ibis.memtable({"input": [0.0], "h0": [1.0], "h1": [1.0]})
         scale = np.array([2.0, 3.0], dtype=np.float32)
         scale_tensor = helper.make_tensor("scale", TensorProto.FLOAT, [2], scale)
-        node = helper.make_node("RMSNormalization", ["input", "scale"], ["output"],
-                                epsilon=0.0)
-        graph = helper.make_graph([node], "rmsnorm_scale_test",
+        node = helper.make_node(
+            "RMSNormalization", ["input", "scale"], ["output"], epsilon=0.0
+        )
+        graph = helper.make_graph(
+            [node],
+            "rmsnorm_scale_test",
             [helper.make_tensor_value_info("input", TensorProto.FLOAT, [None, 2])],
             [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, 2])],
             initializer=[scale_tensor],
         )
         variables = GraphVariables(table, graph)
-        variables["input"] = NumericVariablesGroup({
-            "h0": table["h0"],
-            "h1": table["h1"],
-        })
+        variables["input"] = NumericVariablesGroup(
+            {
+                "h0": table["h0"],
+                "h1": table["h1"],
+            }
+        )
         translator = RMSNormalizationTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         )

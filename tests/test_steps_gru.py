@@ -21,7 +21,6 @@ from orbital.translation.variables import GraphVariables, ValueVariablesGroup
 class TestGRUTranslator:
     """Tests for the ONNX GRU translator (forward-direction unrolling)."""
 
-
     def _make_gru_graph(self, I, H, T, W_data, R_data, B_data=None):
         """Build a minimal ONNX GRU graph with Y_h output."""
         W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 3 * H, I], W_data)
@@ -48,6 +47,7 @@ class TestGRUTranslator:
 
     def test_gru_registered(self):
         from orbital.translation.steps.gru import GRUTranslator
+
         assert TRANSLATORS.get("GRU") is GRUTranslator
 
     def test_gru_single_step_zero_weights(self):
@@ -112,9 +112,7 @@ class TestGRUTranslator:
         R_data = [0.0] * (3 * H * H)
 
         graph = self._make_gru_graph(I, H, T, W_data, R_data)
-        table = ibis.memtable(
-            {"x0": [1.0], "x1": [2.0], "x2": [3.0], "x3": [4.0]}
-        )
+        table = ibis.memtable({"x0": [1.0], "x1": [2.0], "x2": [3.0], "x3": [4.0]})
         variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
         variables["X"] = ValueVariablesGroup(
             {"x0": table["x0"], "x1": table["x1"], "x2": table["x2"], "x3": table["x3"]}
@@ -240,14 +238,14 @@ class TestGRUTranslator:
 
         I, H, T = 1, 1, 1
         W_data = [0.0] * (3 * H * I)
-        W_data[2 * H * I] = 1.0        # W_h = 1
+        W_data[2 * H * I] = 1.0  # W_h = 1
         R_data = [0.0] * (3 * H * H)
-        R_data[2 * H * H] = 2.0        # R_h = 2
+        R_data[2 * H * H] = 2.0  # R_h = 2
 
         # B layout: [Wbz, Wbr, Wbh, Rbz, Rbr, Rbh]
         # Set Rbh (index 5) = 1.0 to distinguish lbr=0 vs lbr=1
         B_data = [0.0] * (6 * H)
-        B_data[5] = 1.0                # Rbh = 1
+        B_data[5] = 1.0  # Rbh = 1
 
         W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 3 * H, I], W_data)
         R_tensor = helper.make_tensor("R", TensorProto.FLOAT, [1, 3 * H, H], R_data)

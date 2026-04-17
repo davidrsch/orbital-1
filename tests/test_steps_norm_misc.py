@@ -17,44 +17,9 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
-
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    '''Create an ONNX GraphProto with given node, I/O specs, and initializers.'''
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
-
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
 
 class TestBatchNormActivationParity:
@@ -68,6 +33,7 @@ class TestBatchNormActivationParity:
     def _bn_relu_reference(self, x, scale, bias, mean, var, eps=1e-5):
         """Compute BatchNorm(x) then ReLU per-element using numpy."""
         import numpy as np
+
         x = np.array(x, dtype=float)
         scale = np.array(scale, dtype=float)
         bias = np.array(bias, dtype=float)
@@ -152,8 +118,16 @@ class TestBatchNormActivationParity:
         got_a = list(backend.execute(result["a"]))
         got_b = list(backend.execute(result["b"]))
 
-        ref_a = list(self._bn_relu_reference(a_vals, [scale_v[0]], [bias_v[0]], [mean_v[0]], [var_v[0]]))
-        ref_b = list(self._bn_relu_reference(b_vals, [scale_v[1]], [bias_v[1]], [mean_v[1]], [var_v[1]]))
+        ref_a = list(
+            self._bn_relu_reference(
+                a_vals, [scale_v[0]], [bias_v[0]], [mean_v[0]], [var_v[0]]
+            )
+        )
+        ref_b = list(
+            self._bn_relu_reference(
+                b_vals, [scale_v[1]], [bias_v[1]], [mean_v[1]], [var_v[1]]
+            )
+        )
 
         for g, e in zip(got_a, ref_a):
             assert abs(g - e) < 1e-6, f"col a: got {g}, expected {e}"
@@ -171,6 +145,7 @@ class TestLpNormalizationTranslator:
 
     def test_l2norm_registered(self):
         from orbital.translation.steps.lpnormalization import LpNormalizationTranslator
+
         assert TRANSLATORS.get("LpNormalization") is LpNormalizationTranslator
 
     def test_l2norm_unit_vector(self):
@@ -188,6 +163,7 @@ class TestLpNormalizationTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.lpnormalization import LpNormalizationTranslator
+
         LpNormalizationTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -211,6 +187,7 @@ class TestLpNormalizationTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.lpnormalization import LpNormalizationTranslator
+
         LpNormalizationTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -234,6 +211,7 @@ class TestLpNormalizationTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.lpnormalization import LpNormalizationTranslator
+
         with pytest.raises(NotImplementedError, match="p=3"):
             LpNormalizationTranslator(
                 table, graph.node[0], variables, self.optimizer, TranslationOptions()
@@ -250,6 +228,7 @@ class TestLRNTranslator:
 
     def test_lrn_registered(self):
         from orbital.translation.steps.localresponsenormalization import LRNTranslator
+
         assert TRANSLATORS.get("LRN") is LRNTranslator
 
     def test_lrn_default_params(self):
@@ -278,11 +257,16 @@ class TestLRNTranslator:
             [],
         )
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
-        variables["x"] = NumericVariablesGroup({
-            "a": table["a"], "b": table["b"],
-            "c": table["c"], "d": table["d"],
-        })
+        variables["x"] = NumericVariablesGroup(
+            {
+                "a": table["a"],
+                "b": table["b"],
+                "c": table["c"],
+                "d": table["d"],
+            }
+        )
         from orbital.translation.steps.localresponsenormalization import LRNTranslator
+
         LRNTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -290,9 +274,10 @@ class TestLRNTranslator:
         backend = ibis.duckdb.connect()
 
         xs = np.array([a, b, c, d])
+
         # numpy reference
         def lrn_ref(xi, lo, hi):
-            sq = np.sum(xs[lo:hi+1] ** 2)
+            sq = np.sum(xs[lo : hi + 1] ** 2)
             return xi / (k + (alpha / size) * sq) ** beta
 
         n = len(xs)
@@ -311,19 +296,26 @@ class TestLRNTranslator:
 
 # ---------------------------------------------------------------------------
 # Unit tests: LogTranslator
-# ---------------------------------------------------------------------------   
+# ---------------------------------------------------------------------------
 
 
 class TestSkipLayerNormalizationTranslator:
     """Tests for SkipLayerNormalizationTranslator."""
 
     def test_skiplayernorm_registered(self):
-        from orbital.translation.steps.skip_layer_norm import SkipLayerNormalizationTranslator
-        assert TRANSLATORS.get("SkipLayerNormalization") is SkipLayerNormalizationTranslator
+        from orbital.translation.steps.skip_layer_norm import (
+            SkipLayerNormalizationTranslator,
+        )
+
+        assert (
+            TRANSLATORS.get("SkipLayerNormalization")
+            is SkipLayerNormalizationTranslator
+        )
 
     def test_skiplayernorm_basic(self):
         """SkipLayerNorm(input, skip, gamma, beta) == LayerNorm(input + skip)."""
         import math
+
         n = 3  # hidden size
         row_input = [0.1, -0.5, 0.8]
         row_skip = [0.2, 0.3, -0.1]
@@ -335,7 +327,10 @@ class TestSkipLayerNormalizationTranslator:
         mean_c = sum(combined) / n
         var_c = sum((v - mean_c) ** 2 for v in combined) / n
         std_c = math.sqrt(var_c + epsilon)
-        expected = [(v - mean_c) / std_c * g + b for v, g, b in zip(combined, gamma_vals, beta_vals)]
+        expected = [
+            (v - mean_c) / std_c * g + b
+            for v, g, b in zip(combined, gamma_vals, beta_vals)
+        ]
 
         table_data = {f"i{j}": [row_input[j]] for j in range(n)}
         table_data.update({f"s{j}": [row_skip[j]] for j in range(n)})
@@ -362,12 +357,19 @@ class TestSkipLayerNormalizationTranslator:
             initializer=[gamma_tensor, beta_tensor],
         )
 
-        from orbital.translation.steps.skip_layer_norm import SkipLayerNormalizationTranslator
+        from orbital.translation.steps.skip_layer_norm import (
+            SkipLayerNormalizationTranslator,
+        )
+
         # GraphVariables needs a table with column names matching graph input names.
         dummy = ibis.memtable({"input": [1.0], "skip": [1.0]})
         variables = GraphVariables(dummy, graph)
-        variables["input"] = NumericVariablesGroup({f"i{j}": table[f"i{j}"] for j in range(n)})
-        variables["skip"] = NumericVariablesGroup({f"s{j}": table[f"s{j}"] for j in range(n)})
+        variables["input"] = NumericVariablesGroup(
+            {f"i{j}": table[f"i{j}"] for j in range(n)}
+        )
+        variables["skip"] = NumericVariablesGroup(
+            {f"s{j}": table[f"s{j}"] for j in range(n)}
+        )
 
         t = SkipLayerNormalizationTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()

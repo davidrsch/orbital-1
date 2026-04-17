@@ -6,9 +6,9 @@ Normalises the input tensor element-wise using per-row mean and variance:
     var   = (1/C) * sum_c (x_c - mean)^2
     y_c   = (x_c - mean) / sqrt(var)
 
-Only normalisation over the feature axis (all columns in a VariablesGroup) is
-supported; the ONNX ``axes`` attribute must be absent (default all-axes
-normalisation).
+Only feature-axis normalisation (the ``axes=[1]`` or defaulting to per-sample
+over all features) is supported.  Explicitly setting any other axes raises
+``NotImplementedError``.
 
 References
 ----------
@@ -28,10 +28,10 @@ class MeanVarianceNormalizationTranslator(Translator):
         """Translate the MeanVarianceNormalization node."""
         axes = self._attributes.get("axes", None)
         if axes is not None and list(axes) != [1]:
-            # ONNX default is axes=[0, 2, 3] for NCHW; only last-axis normalisation is supported
-            # For 2D tabular input (N, C), axes=[1] means "normalise along the feature axis",
-            # which is semantically identical to the default behaviour.
-            # Raise for any other explicit axes specification.
+            # orbital computes per-sample normalisation over the feature axis (axes=[1]).
+            # axes=[1] and the no-axes default are both accepted.
+            # Any other explicit axes value is rejected because it would require
+            # batch-level statistics that are not available in per-row SQL scoring.
             raise NotImplementedError(
                 f"MeanVarianceNormalization: axes={axes} is not supported; "
                 "only default (all axes) normalisation is supported."

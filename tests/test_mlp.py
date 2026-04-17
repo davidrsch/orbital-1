@@ -85,10 +85,12 @@ class TestReluTranslator:
             }
         """)
         variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
-        variables["input"] = NumericVariablesGroup({
-            "h0": table["h0"],
-            "h1": table["h1"],
-        })
+        variables["input"] = NumericVariablesGroup(
+            {
+                "h0": table["h0"],
+                "h1": table["h1"],
+            }
+        )
         translator = ReluTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -152,10 +154,12 @@ class TestTanhTranslator:
             }
         """)
         variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
-        variables["input"] = NumericVariablesGroup({
-            "h0": table["h0"],
-            "h1": table["h1"],
-        })
+        variables["input"] = NumericVariablesGroup(
+            {
+                "h0": table["h0"],
+                "h1": table["h1"],
+            }
+        )
         translator = TanhTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -223,10 +227,12 @@ class TestSigmoidTranslator:
             }
         """)
         variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
-        variables["input"] = NumericVariablesGroup({
-            "h0": table["h0"],
-            "h1": table["h1"],
-        })
+        variables["input"] = NumericVariablesGroup(
+            {
+                "h0": table["h0"],
+                "h1": table["h1"],
+            }
+        )
         translator = SigmoidTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -278,7 +284,11 @@ class TestGemmTranslator:
             [gemm_node],
             "gemm_graph",
             [helper.make_tensor_value_info("A", TensorProto.FLOAT, [None, input_dim])],
-            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, output_dim])],
+            [
+                helper.make_tensor_value_info(
+                    "output", TensorProto.FLOAT, [None, output_dim]
+                )
+            ],
             initializer=[b_tensor, c_tensor],
         )
         return graph
@@ -299,10 +309,12 @@ class TestGemmTranslator:
             transB=1,
         )
         variables = GraphVariables(table, graph)
-        variables["A"] = NumericVariablesGroup({
-            "feature1": table["feature1"],
-            "feature2": table["feature2"],
-        })
+        variables["A"] = NumericVariablesGroup(
+            {
+                "feature1": table["feature1"],
+                "feature2": table["feature2"],
+            }
+        )
         translator = GemmTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -325,10 +337,12 @@ class TestGemmTranslator:
             transB=1,
         )
         variables = GraphVariables(table, graph)
-        variables["A"] = NumericVariablesGroup({
-            "feature1": table["feature1"],
-            "feature2": table["feature2"],
-        })
+        variables["A"] = NumericVariablesGroup(
+            {
+                "feature1": table["feature1"],
+                "feature2": table["feature2"],
+            }
+        )
         translator = GemmTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -350,11 +364,13 @@ class TestGemmTranslator:
 class TestMLPEndToEnd:
     def setup_method(self):
         rng = np.random.default_rng(42)
-        self.X = pd.DataFrame({
-            "f1": rng.standard_normal(50),
-            "f2": rng.standard_normal(50),
-            "f3": rng.standard_normal(50),
-        })
+        self.X = pd.DataFrame(
+            {
+                "f1": rng.standard_normal(50),
+                "f2": rng.standard_normal(50),
+                "f3": rng.standard_normal(50),
+            }
+        )
         self.y_reg = self.X["f1"] * 2.0 + self.X["f2"] * -1.0 + 0.5
         self.y_bin = (self.y_reg > 0).astype(int)
         self.y_multi = pd.cut(self.y_reg, bins=3, labels=[0, 1, 2]).astype(int)
@@ -367,6 +383,7 @@ class TestMLPEndToEnd:
 
     def _validate(self, pipeline, X, y, is_classification):
         import duckdb
+
         conn = duckdb.connect(":memory:")
         parsed = parse_pipeline(pipeline, self.features)
         sql = orbital.export_sql("data", parsed, dialect="duckdb")
@@ -382,128 +399,176 @@ class TestMLPEndToEnd:
     def test_mlp_regressor_relu_single_layer(self):
         """MLP regressor, single hidden layer, relu activation."""
         import duckdb
+
         conn = duckdb.connect(":memory:")
-        pipeline = Pipeline([
-            ("scaler", StandardScaler()),
-            ("mlp", MLPRegressor(
-                hidden_layer_sizes=(10,),
-                activation="relu",
-                max_iter=200,
-                random_state=42,
-            )),
-        ])
+        pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "mlp",
+                    MLPRegressor(
+                        hidden_layer_sizes=(10,),
+                        activation="relu",
+                        max_iter=200,
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
         pipeline.fit(self.X, self.y_reg)
         self._validate(pipeline, self.X, self.y_reg, is_classification=False)
 
     def test_mlp_regressor_relu_two_layers(self):
         """MLP regressor, two hidden layers, relu activation."""
         import duckdb
+
         conn = duckdb.connect(":memory:")
-        pipeline = Pipeline([
-            ("mlp", MLPRegressor(
-                hidden_layer_sizes=(10, 5),
-                activation="relu",
-                max_iter=200,
-                random_state=42,
-            )),
-        ])
+        pipeline = Pipeline(
+            [
+                (
+                    "mlp",
+                    MLPRegressor(
+                        hidden_layer_sizes=(10, 5),
+                        activation="relu",
+                        max_iter=200,
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
         pipeline.fit(self.X, self.y_reg)
         self._validate(pipeline, self.X, self.y_reg, is_classification=False)
 
     def test_mlp_regressor_tanh_single_layer(self):
         """MLP regressor, single hidden layer, tanh activation."""
         import duckdb
+
         conn = duckdb.connect(":memory:")
-        pipeline = Pipeline([
-            ("scaler", StandardScaler()),
-            ("mlp", MLPRegressor(
-                hidden_layer_sizes=(8,),
-                activation="tanh",
-                max_iter=200,
-                random_state=42,
-            )),
-        ])
+        pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "mlp",
+                    MLPRegressor(
+                        hidden_layer_sizes=(8,),
+                        activation="tanh",
+                        max_iter=200,
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
         pipeline.fit(self.X, self.y_reg)
         self._validate(pipeline, self.X, self.y_reg, is_classification=False)
 
     def test_mlp_regressor_logistic_single_layer(self):
         """MLP regressor, single hidden layer, logistic (=sigmoid) activation."""
         import duckdb
+
         conn = duckdb.connect(":memory:")
-        pipeline = Pipeline([
-            ("scaler", StandardScaler()),
-            ("mlp", MLPRegressor(
-                hidden_layer_sizes=(8,),
-                activation="logistic",
-                max_iter=200,
-                random_state=42,
-            )),
-        ])
+        pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "mlp",
+                    MLPRegressor(
+                        hidden_layer_sizes=(8,),
+                        activation="logistic",
+                        max_iter=200,
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
         pipeline.fit(self.X, self.y_reg)
         self._validate(pipeline, self.X, self.y_reg, is_classification=False)
 
     def test_mlp_classifier_binary_relu(self):
         """MLP binary classifier, relu activation."""
         import duckdb
+
         conn = duckdb.connect(":memory:")
-        pipeline = Pipeline([
-            ("mlp", MLPClassifier(
-                hidden_layer_sizes=(10,),
-                activation="relu",
-                max_iter=200,
-                random_state=42,
-            )),
-        ])
+        pipeline = Pipeline(
+            [
+                (
+                    "mlp",
+                    MLPClassifier(
+                        hidden_layer_sizes=(10,),
+                        activation="relu",
+                        max_iter=200,
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
         pipeline.fit(self.X, self.y_bin)
         self._validate(pipeline, self.X, self.y_bin, is_classification=True)
 
     def test_mlp_classifier_multiclass_relu(self):
         """MLP multiclass classifier (3 classes), relu activation."""
         import duckdb
+
         conn = duckdb.connect(":memory:")
-        pipeline = Pipeline([
-            ("mlp", MLPClassifier(
-                hidden_layer_sizes=(10,),
-                activation="relu",
-                max_iter=500,
-                random_state=42,
-            )),
-        ])
+        pipeline = Pipeline(
+            [
+                (
+                    "mlp",
+                    MLPClassifier(
+                        hidden_layer_sizes=(10,),
+                        activation="relu",
+                        max_iter=500,
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
         pipeline.fit(self.X, self.y_multi)
         self._validate(pipeline, self.X, self.y_multi, is_classification=True)
 
     def test_mlp_classifier_binary_tanh(self):
         """MLP binary classifier, tanh activation."""
         import duckdb
+
         conn = duckdb.connect(":memory:")
-        pipeline = Pipeline([
-            ("mlp", MLPClassifier(
-                hidden_layer_sizes=(8,),
-                activation="tanh",
-                max_iter=200,
-                random_state=42,
-            )),
-        ])
+        pipeline = Pipeline(
+            [
+                (
+                    "mlp",
+                    MLPClassifier(
+                        hidden_layer_sizes=(8,),
+                        activation="tanh",
+                        max_iter=200,
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
         pipeline.fit(self.X, self.y_bin)
         self._validate(pipeline, self.X, self.y_bin, is_classification=True)
 
     def test_mlp_pipeline_scaler_then_mlp(self):
         """Pipeline with StandardScaler followed by MLP regressor."""
         import duckdb
+
         conn = duckdb.connect(":memory:")
-        pipeline = Pipeline([
-            ("scaler", StandardScaler()),
-            ("mlp", MLPRegressor(
-                hidden_layer_sizes=(5,),
-                activation="relu",
-                max_iter=200,
-                random_state=42,
-            )),
-        ])
+        pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "mlp",
+                    MLPRegressor(
+                        hidden_layer_sizes=(5,),
+                        activation="relu",
+                        max_iter=200,
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
         pipeline.fit(self.X, self.y_reg)
         self._validate(pipeline, self.X, self.y_reg, is_classification=False)
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: ExpTranslator
 # ---------------------------------------------------------------------------
-

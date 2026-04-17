@@ -25,6 +25,7 @@ PY39 = sys.version_info[:2] < (3, 10)
 # Shared ONNX graph builder
 # ---------------------------------------------------------------------------
 
+
 def make_graph_with_inits(node, inputs_info, outputs_info, initializers):
     """Create an ONNX GraphProto with the given node, I/O specs, and initializers.
 

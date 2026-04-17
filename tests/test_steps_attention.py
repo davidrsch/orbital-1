@@ -17,43 +17,10 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
 
 class TestAttentionTranslator:
     """Tests for the ONNX Attention (com.microsoft fused-QKV) translator."""
@@ -74,9 +41,7 @@ class TestAttentionTranslator:
             helper.make_tensor("W", TensorProto.FLOAT, [I_size, 3 * H], w_flat),
         ]
         if bias_flat is not None:
-            inits.append(
-                helper.make_tensor("B", TensorProto.FLOAT, [3 * H], bias_flat)
-            )
+            inits.append(helper.make_tensor("B", TensorProto.FLOAT, [3 * H], bias_flat))
         graph = _make_graph_with_inits(
             node,
             [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, T * I_size])],
@@ -87,6 +52,7 @@ class TestAttentionTranslator:
 
     def test_attention_registered(self):
         from orbital.translation.steps.attention import AttentionTranslator
+
         assert TRANSLATORS.get("Attention") is AttentionTranslator
 
     def test_attention_identity_weight_single_timestep(self):
@@ -125,6 +91,7 @@ class TestAttentionTranslator:
 
         T, I_size, H, num_heads = 2, 4, 4, 2  # head_dim = 2
         import random
+
         random.seed(42)
         w_flat = [random.gauss(0, 0.1) for _ in range(I_size * 3 * H)]
 
@@ -216,5 +183,3 @@ class TestAttentionTranslator:
 # ---------------------------------------------------------------------------
 # Unit tests: MeanVarianceNormalizationTranslator
 # ---------------------------------------------------------------------------
-
-

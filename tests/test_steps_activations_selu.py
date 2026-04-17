@@ -17,50 +17,17 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
 
 class TestSwishTranslator:
     """Tests for the ONNX Swish translator (x * sigmoid(x))."""
 
-
     def test_swish_registered(self):
         from orbital.translation.steps.swish import SwishTranslator
+
         assert TRANSLATORS.get("Swish") is SwishTranslator
 
     def test_swish_single_column(self):
@@ -73,14 +40,17 @@ class TestSwishTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.swish import SwishTranslator
+
         SwishTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
         backend = ibis.duckdb.connect()
         result = list(backend.execute(variables.peek_variable("output")))
         import math
+
         def swish(x):
             return x / (1.0 + math.exp(-x))
+
         expected = [swish(v) for v in [0.0, 1.0, -2.0]]
         for got, exp in zip(result, expected):
             assert abs(got - exp) < 1e-9
@@ -95,6 +65,7 @@ class TestSwishTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.swish import SwishTranslator
+
         SwishTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -112,13 +83,12 @@ class TestSwishTranslator:
 # ---------------------------------------------------------------------------
 
 
-
 class TestThresholdedReluTranslator:
     """Tests for the ONNX ThresholdedRelu translator (x if x > alpha else 0)."""
 
-
     def test_thresholdedrelu_registered(self):
         from orbital.translation.steps.thresholdedrelu import ThresholdedReluTranslator
+
         assert TRANSLATORS.get("ThresholdedRelu") is ThresholdedReluTranslator
 
     def test_thresholdedrelu_default_alpha(self):
@@ -131,6 +101,7 @@ class TestThresholdedReluTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.thresholdedrelu import ThresholdedReluTranslator
+
         ThresholdedReluTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -148,6 +119,7 @@ class TestThresholdedReluTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.thresholdedrelu import ThresholdedReluTranslator
+
         ThresholdedReluTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -166,6 +138,7 @@ class TestThresholdedReluTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), model)
         variables["x"] = NumericVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.thresholdedrelu import ThresholdedReluTranslator
+
         ThresholdedReluTranslator(
             table, model.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -187,13 +160,12 @@ class TestThresholdedReluTranslator:
 # ---------------------------------------------------------------------------
 
 
-
 class TestShrinkTranslator:
     """Tests for ShrinkTranslator."""
 
-
     def test_shrink_registered(self):
         from orbital.translation.steps.shrink import ShrinkTranslator
+
         assert TRANSLATORS.get("Shrink") is ShrinkTranslator
 
     def test_shrink_below_neg_lambd(self):
@@ -211,6 +183,7 @@ class TestShrinkTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
         variables["x"] = table["x"]
         from orbital.translation.steps.shrink import ShrinkTranslator
+
         ShrinkTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -221,9 +194,7 @@ class TestShrinkTranslator:
     def test_shrink_in_dead_zone(self):
         """x=0.3, lambd=0.5: y = 0 (inside dead zone)."""
         table = ibis.memtable({"x": [0.3]})
-        scale_node = helper.make_node(
-            "Shrink", inputs=["x"], outputs=["y"], lambd=0.5
-        )
+        scale_node = helper.make_node("Shrink", inputs=["x"], outputs=["y"], lambd=0.5)
         graph = _make_graph_with_inits(
             scale_node,
             [helper.make_tensor_value_info("x", TensorProto.FLOAT, [None])],
@@ -233,6 +204,7 @@ class TestShrinkTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
         variables["x"] = table["x"]
         from orbital.translation.steps.shrink import ShrinkTranslator
+
         ShrinkTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -255,6 +227,7 @@ class TestShrinkTranslator:
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
         variables["x"] = table["x"]
         from orbital.translation.steps.shrink import ShrinkTranslator
+
         ShrinkTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -266,5 +239,3 @@ class TestShrinkTranslator:
 # ---------------------------------------------------------------------------
 # Unit tests: ModTranslator
 # ---------------------------------------------------------------------------
-
-

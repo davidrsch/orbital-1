@@ -17,19 +17,11 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
 from orbital.translation.steps.mul import MulTranslator
 from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass TestMulTranslator:
 
+
+class TestMulTranslator:
     def test_mul_single_column(self):
         """Test MulTranslator with a single column input."""
         table = ibis.memtable({"input": [2.0, 3.0, 4.0]})
@@ -188,9 +180,7 @@ from orbital.translation.steps.linearclass TestMulTranslator:
         assert result == [5.0, 10.0, 15.0]
 
 
-
 class TestDivTranslator:
-
     def test_div_single_column(self):
         """Test DivTranslator with a single column input."""
         table = ibis.memtable({"input": [10.0, 20.0, 30.0]})

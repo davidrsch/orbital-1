@@ -17,53 +17,18 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
-
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
 
 class TestTransposeTranslator:
     """Tests for TransposeTranslator."""
 
-
     def test_transpose_registered(self):
         """Verify TransposeTranslator is registered in TRANSLATORS."""
         from orbital.translation.steps.transpose import TransposeTranslator
+
         assert TRANSLATORS.get("Transpose") is TransposeTranslator
 
     def test_transpose_passthrough(self):
@@ -77,21 +42,23 @@ class TestTransposeTranslator:
         variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
         variables["input"] = ValueVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.transpose import TransposeTranslator
-        t = TransposeTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = TransposeTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         result = variables.peek_variable("output")
         assert isinstance(result, ValueVariablesGroup)
         assert set(result.keys()) == {"a", "b"}
 
 
-
 class TestFlattenTranslator:
     """Tests for FlattenTranslator."""
-
 
     def test_flatten_registered(self):
         """Verify FlattenTranslator is registered in TRANSLATORS."""
         from orbital.translation.steps.flatten import FlattenTranslator
+
         assert TRANSLATORS.get("Flatten") is FlattenTranslator
 
     def test_flatten_axis1_passthrough(self):
@@ -105,7 +72,10 @@ class TestFlattenTranslator:
         variables = GraphVariables(ibis.memtable({"input": [1.0]}), model)
         variables["input"] = ValueVariablesGroup({"a": table["a"], "b": table["b"]})
         from orbital.translation.steps.flatten import FlattenTranslator
-        t = FlattenTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = FlattenTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         result = variables.peek_variable("output")
         assert isinstance(result, ValueVariablesGroup)
@@ -121,18 +91,20 @@ class TestFlattenTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.flatten import FlattenTranslator
-        t = FlattenTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = FlattenTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         with pytest.raises(NotImplementedError, match="axis=1"):
             t.process()
-
 
 
 class TestSqueezeTranslator:
     """Tests for SqueezeTranslator."""
 
-
     def test_squeeze_registered(self):
         from orbital.translation.steps.squeeze import SqueezeTranslator
+
         assert TRANSLATORS.get("Squeeze") is SqueezeTranslator
 
     def test_squeeze_passthrough(self):
@@ -145,19 +117,25 @@ class TestSqueezeTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.squeeze import SqueezeTranslator
-        t = SqueezeTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = SqueezeTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
-        assert list(backend.execute(variables.peek_variable("output"))) == [1.0, 2.0, 3.0]
-
+        assert list(backend.execute(variables.peek_variable("output"))) == [
+            1.0,
+            2.0,
+            3.0,
+        ]
 
 
 class TestUnsqueezeTranslator:
     """Tests for UnsqueezeTranslator."""
 
-
     def test_unsqueeze_registered(self):
         from orbital.translation.steps.squeeze import UnsqueezeTranslator
+
         assert TRANSLATORS.get("Unsqueeze") is UnsqueezeTranslator
 
     def test_unsqueeze_passthrough(self):
@@ -172,19 +150,25 @@ class TestUnsqueezeTranslator:
         """)
         variables = GraphVariables(table, model)
         from orbital.translation.steps.squeeze import UnsqueezeTranslator
-        t = UnsqueezeTranslator(table, model.node[0], variables, self.optimizer, TranslationOptions())
+
+        t = UnsqueezeTranslator(
+            table, model.node[0], variables, self.optimizer, TranslationOptions()
+        )
         t.process()
         backend = ibis.duckdb.connect()
-        assert list(backend.execute(variables.peek_variable("output"))) == [1.0, 2.0, 3.0]
-
+        assert list(backend.execute(variables.peek_variable("output"))) == [
+            1.0,
+            2.0,
+            3.0,
+        ]
 
 
 class TestShapeTranslator:
     """Tests for ShapeTranslator."""
 
-
     def test_shape_registered(self):
         from orbital.translation.steps.shape import ShapeTranslator
+
         assert TRANSLATORS.get("Shape") is ShapeTranslator
 
     def test_shape_raises(self):
@@ -200,6 +184,7 @@ class TestShapeTranslator:
         variables = GraphVariables(table, graph)
         variables["x"] = table["x"]
         from orbital.translation.steps.shape import ShapeTranslator
+
         t = ShapeTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -259,5 +244,3 @@ class TestShapeTranslator:
 # ---------------------------------------------------------------------------
 # Unit tests: TileTranslator
 # ---------------------------------------------------------------------------
-
-

@@ -7,6 +7,7 @@ from ..variables import VariablesGroup
 from ._rnn_base import (
     _get_flat_weights,
     _resolve_rnn_activation,
+    _validate_rnn_direction,
     _write_bidir_sequence_outputs,
     _write_sequence_outputs,
 )
@@ -56,11 +57,7 @@ class GRUTranslator(Translator):
         # https://onnx.ai/onnx/operators/onnx__GRU.html
 
         direction = str(self._attributes.get("direction", "forward"))
-        if direction not in ("forward", "reverse", "bidirectional"):
-            raise NotImplementedError(
-                f"GRU: direction={direction!r} is not supported; "
-                "must be 'forward', 'reverse', or 'bidirectional'."
-            )
+        _validate_rnn_direction(direction, "GRU")
 
         activations = self._attributes.get("activations", None)
         act_names = list(activations) if activations else ["Sigmoid", "Tanh"]

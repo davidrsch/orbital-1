@@ -17,44 +17,9 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
-
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
 # ---------------------------------------------------------------------------
 # Unit tests: ConvTranslator
@@ -64,9 +29,9 @@ def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
 class TestConvTranslator:
     """Tests for the ONNX Conv (1-D convolution) translator."""
 
-
     def test_conv_registered(self):
         from orbital.translation.steps.conv import ConvTranslator
+
         assert TRANSLATORS.get("Conv") is ConvTranslator
 
     def test_conv1d_single_filter_single_channel_valid(self):
@@ -81,16 +46,16 @@ class TestConvTranslator:
         from orbital.translation.steps.conv import ConvTranslator
 
         # Input group: C_in * W_in = 1*4 columns
-        table = ibis.memtable(
-            {"x0": [1.0], "x1": [2.0], "x2": [3.0], "x3": [4.0]}
-        )
+        table = ibis.memtable({"x0": [1.0], "x1": [2.0], "x2": [3.0], "x3": [4.0]})
 
         W_data = [1.0, 1.0, 1.0]  # shape [1, 1, 3]
         W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [1, 1, 3], W_data)
         node = helper.make_node("Conv", inputs=["X", "W"], outputs=["Y"])
-        node.attribute.extend([
-            helper.make_attribute("kernel_shape", [3]),
-        ])
+        node.attribute.extend(
+            [
+                helper.make_attribute("kernel_shape", [3]),
+            ]
+        )
         graph = _make_graph_with_inits(
             node,
             [helper.make_tensor_value_info("X", TensorProto.FLOAT, [None, 1, 4])],
@@ -177,7 +142,7 @@ class TestConvTranslator:
         assert len(result) == 2  # 2 filters  1 position
         backend = ibis.duckdb.connect()
         vals = [backend.execute(v).tolist()[0] for v in result.values()]
-        assert abs(vals[0] - 6.0) < 1e-6   # 2.0 * 3.0
+        assert abs(vals[0] - 6.0) < 1e-6  # 2.0 * 3.0
         assert abs(vals[1] - (-2.0)) < 1e-6  # 2.0 * -1.0
 
     def test_conv1d_rejects_2d_weights(self):
@@ -208,8 +173,13 @@ class TestConvTranslator:
         W_flat = [2.0, 3.0]  # W[0,0,0]=2, W[1,0,0]=3
         W_tensor = helper.make_tensor("W", TensorProto.FLOAT, [2, 1, 1], W_flat)
         node = helper.make_node(
-            "Conv", inputs=["X", "W"], outputs=["Y"],
-            group=2, dilations=[1], strides=[1], pads=[0, 0]
+            "Conv",
+            inputs=["X", "W"],
+            outputs=["Y"],
+            group=2,
+            dilations=[1],
+            strides=[1],
+            pads=[0, 0],
         )
         graph = _make_graph_with_inits(
             node,
@@ -220,6 +190,7 @@ class TestConvTranslator:
         variables = GraphVariables(ibis.memtable({"X": [0.0]}), graph)
         variables["X"] = ValueVariablesGroup({"c0": table["c0"], "c1": table["c1"]})
         from orbital.translation.steps.conv import ConvTranslator
+
         ConvTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         ).process()
@@ -247,6 +218,7 @@ class TestConvTranslator:
             {"c0": table["c0"], "c1": table["c1"], "c2": table["c2"], "c3": table["c3"]}
         )
         from orbital.translation.steps.conv import ConvTranslator
+
         translator = ConvTranslator(
             table, graph.node[0], variables, self.optimizer, TranslationOptions()
         )
@@ -267,4 +239,3 @@ class TestConvTranslator:
 # ---------------------------------------------------------------------------
 # Unit tests: LSTMTranslator
 # ---------------------------------------------------------------------------
-

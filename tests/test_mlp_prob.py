@@ -87,12 +87,15 @@ class TestMLPClassifierBinaryProba:
         self.X, self.y_bin, _ = _make_data()
         self.pipeline = Pipeline(
             [
-                ("mlp", MLPClassifier(
-                    hidden_layer_sizes=(10,),
-                    activation="relu",
-                    max_iter=500,
-                    random_state=42,
-                )),
+                (
+                    "mlp",
+                    MLPClassifier(
+                        hidden_layer_sizes=(10,),
+                        activation="relu",
+                        max_iter=500,
+                        random_state=42,
+                    ),
+                ),
             ]
         )
         self.pipeline.fit(self.X, self.y_bin)
@@ -106,7 +109,9 @@ class TestMLPClassifierBinaryProba:
         sql = orbital.export_sql("data", parsed, dialect="duckdb")
         result = execute_sql(sql, conn, "duckdb", self.X)
         proba_cols = [c for c in result.columns if c.startswith("output_probability.")]
-        assert len(proba_cols) == 2, f"Expected 2 probability columns, got: {proba_cols}"
+        assert len(proba_cols) == 2, (
+            f"Expected 2 probability columns, got: {proba_cols}"
+        )
 
     def test_binary_proba_values_match(self):
         """Per-class probability values match sklearn predict_proba() within 1e-4."""
@@ -134,12 +139,15 @@ class TestMLPClassifierBinaryProba:
         pipeline = Pipeline(
             [
                 ("scaler", StandardScaler()),
-                ("mlp", MLPClassifier(
-                    hidden_layer_sizes=(8,),
-                    activation="relu",
-                    max_iter=500,
-                    random_state=7,
-                )),
+                (
+                    "mlp",
+                    MLPClassifier(
+                        hidden_layer_sizes=(8,),
+                        activation="relu",
+                        max_iter=500,
+                        random_state=7,
+                    ),
+                ),
             ]
         )
         pipeline.fit(self.X, self.y_bin)
@@ -158,12 +166,15 @@ class TestMLPClassifierMulticlassProba:
         self.X, _, self.y_multi = _make_data()
         self.pipeline = Pipeline(
             [
-                ("mlp", MLPClassifier(
-                    hidden_layer_sizes=(10,),
-                    activation="relu",
-                    max_iter=1000,
-                    random_state=42,
-                )),
+                (
+                    "mlp",
+                    MLPClassifier(
+                        hidden_layer_sizes=(10,),
+                        activation="relu",
+                        max_iter=1000,
+                        random_state=42,
+                    ),
+                ),
             ]
         )
         self.pipeline.fit(self.X, self.y_multi)
@@ -208,12 +219,15 @@ class TestMLPClassifierMulticlassProba:
         pipeline = Pipeline(
             [
                 ("scaler", StandardScaler()),
-                ("mlp", MLPClassifier(
-                    hidden_layer_sizes=(10, 5),
-                    activation="tanh",
-                    max_iter=1000,
-                    random_state=13,
-                )),
+                (
+                    "mlp",
+                    MLPClassifier(
+                        hidden_layer_sizes=(10, 5),
+                        activation="tanh",
+                        max_iter=1000,
+                        random_state=13,
+                    ),
+                ),
             ]
         )
         pipeline.fit(self.X, self.y_multi)
@@ -237,12 +251,15 @@ class TestMLPClassifierLabelOutput:
 
         pipeline = Pipeline(
             [
-                ("mlp", MLPClassifier(
-                    hidden_layer_sizes=(10,),
-                    activation="relu",
-                    max_iter=500,
-                    random_state=0,
-                )),
+                (
+                    "mlp",
+                    MLPClassifier(
+                        hidden_layer_sizes=(10,),
+                        activation="relu",
+                        max_iter=500,
+                        random_state=0,
+                    ),
+                ),
             ]
         )
         pipeline.fit(self.X, self.y_bin)
@@ -260,12 +277,15 @@ class TestMLPClassifierLabelOutput:
 
         pipeline = Pipeline(
             [
-                ("mlp", MLPClassifier(
-                    hidden_layer_sizes=(10,),
-                    activation="relu",
-                    max_iter=1000,
-                    random_state=0,
-                )),
+                (
+                    "mlp",
+                    MLPClassifier(
+                        hidden_layer_sizes=(10,),
+                        activation="relu",
+                        max_iter=1000,
+                        random_state=0,
+                    ),
+                ),
             ]
         )
         pipeline.fit(self.X, self.y_multi)

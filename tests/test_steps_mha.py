@@ -17,43 +17,10 @@ from orbital.translation.variables import (
 )
 from orbital.translation.optimizer import Optimizer
 from orbital.translation.options import TranslationOptions
-from orbital.translation.steps.softmax import SoftmaxTranslator
-from orbital.translation.steps.imputer import ImputerTranslator
-from orbital.translation.steps.argmax import ArgMaxTranslator
-from orbital.translation.steps.add import AddTranslator
-from orbital.translation.steps.sub import SubTranslator
-from orbital.translation.steps.mul import MulTranslator
-from orbital.translation.steps.div import DivTranslator
-from orbital.translation.steps.identity import IdentityTranslator
-from orbital.translation.steps.reshape import ReshapeTranslator
-from orbital.translation.steps.matmul import MatMulTranslator
-from orbital.translation.steps.cast import CastTranslator, CastLikeTranslator
-from orbital.translation.steps.linearclass import LinearClassifierTranslator
-from orbital.translation.steps.linearreg import LinearRegressorTranslator
-from orbital.translation.steps.scaler import ScalerTranslator
-from orbital.translation.steps.onehotencoder import OneHotEncoderTranslator
-from orbital.translation.steps.labelencoder import LabelEncoderTranslator
-from orbital.translation.steps.where import WhereTranslator
-from orbital.translation.steps.zipmap import ZipMapTranslator
-from orbital.translation.steps.concat import ConcatTranslator
-from orbital.translation.steps.featurevectorizer import FeatureVectorizerTranslator
-from orbital.translation.steps.gather import GatherTranslator
-from orbital.translation.steps.arrayfeatureextractor import ArrayFeatureExtractorTranslator
 
 
-# ---------------------------------------------------------------------------
-# Helper: build an ONNX graph with weight initializers
-# ---------------------------------------------------------------------------
+from conftest import make_graph_with_inits as _make_graph_with_inits
 
-def _make_graph_with_inits(node, inputs_info, outputs_info, initializers):
-    """Create an ONNX GraphProto with given node, I/O specs, and initializers."""
-    return helper.make_graph(
-        [node],
-        "test_graph",
-        inputs_info,
-        outputs_info,
-        initializer=initializers,
-    )
 
 class TestMultiHeadAttentionTranslator:
     """Tests for the ONNX MultiHeadAttention (com.microsoft contrib) translator."""
@@ -92,6 +59,7 @@ class TestMultiHeadAttentionTranslator:
         from orbital.translation.steps.multiheadattention import (
             MultiHeadAttentionTranslator,
         )
+
         assert TRANSLATORS.get("MultiHeadAttention") is MultiHeadAttentionTranslator
 
     def test_mha_self_attention_uniform_weights(self):
@@ -107,9 +75,7 @@ class TestMultiHeadAttentionTranslator:
         bias_flat = [0.0] * (3 * D)
 
         graph = self._make_mha_graph(T_q, D, num_heads, bias_flat)
-        table = ibis.memtable(
-            {"q0": [1.0], "q1": [0.0], "q2": [0.0], "q3": [1.0]}
-        )
+        table = ibis.memtable({"q0": [1.0], "q1": [0.0], "q2": [0.0], "q3": [1.0]})
         q_group = ValueVariablesGroup(
             {
                 "q0": table["q0"],
@@ -185,11 +151,7 @@ class TestMultiHeadAttentionTranslator:
         )
         graph = _make_graph_with_inits(
             node,
-            [
-                helper.make_tensor_value_info(
-                    "Q", TensorProto.FLOAT, [None, T_q * D]
-                )
-            ],
+            [helper.make_tensor_value_info("Q", TensorProto.FLOAT, [None, T_q * D])],
             [
                 helper.make_tensor_value_info(
                     "output", TensorProto.FLOAT, [None, T_q * D]
@@ -269,5 +231,3 @@ class TestMultiHeadAttentionTranslator:
 # ---------------------------------------------------------------------------
 # Unit tests: AttentionTranslator
 # ---------------------------------------------------------------------------
-
-
