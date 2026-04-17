@@ -272,3 +272,27 @@ decomposed forms:
 
 For opset ≥ 20 models that export a native `Gelu` op, orbital now registers
 a `GeluTranslator` that handles both `approximate="tanh"` and `approximate="none"` modes.
+
+
+## Known scope and limitations
+
+Orbital targets tabular, row-wise SQL translation. The following are
+deliberate, documented non-goals or structural limitations rather than bugs:
+
+- **1-D tensors only.** `Conv`, `ConvTranspose`, `AveragePool`, `MaxPool`,
+  `BatchNormalization`, `InstanceNormalization` and the global pooling ops
+  accept rank-3 tensors (weight rank 3, i.e. 1-D temporal data). 2-D image
+  and 3-D volumetric variants raise `NotImplementedError`.
+- **No text/hash preprocessing.** Keras `StringLookup`,
+  `TextVectorization`, `Hashing`, `Discretization` and `HashedCrossing`
+  layers have no SQL-portable counterpart and are not supported.
+- **Explicit `NotImplementedError` surfaces:**
+  - `Gemm` with `transA=1`
+  - `LSTM` with peephole connections
+  - `Conv` / `ConvTranspose` weight rank other than 3
+  - `GRU` with non-zero initial hidden state or `sequence_lens`
+- **MLP activation defaults.** `LeakyRelu` uses the ONNX node attribute
+  `alpha` (default 0.01). When models are emitted from Keras with
+  `activation="leaky_relu"` as a bare string, Keras exports α=0.01 
+  matching ONNX  even though Keras' `LeakyReLU` *layer* defaults to 0.3.
+  Use an explicit `LeakyReLU(negative_slope=...)` layer to override.

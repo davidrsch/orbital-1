@@ -42,7 +42,7 @@ class CumSumTranslator(Translator):
         except (TypeError, ValueError):
             try:
                 axis = int(axis_raw.execute())
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 axis = 1  # default to column axis
 
         exclusive = int(self._attributes.get("exclusive", 0))

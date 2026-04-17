@@ -58,17 +58,17 @@ class ExpandTranslator(Translator):
             except (TypeError, ValueError):
                 try:
                     n = int(n_raw.execute())
-                except Exception:
+                except (AttributeError, TypeError, ValueError):
                     raise NotImplementedError(
                         "ExpandTranslator could not resolve shape to a scalar integer"
                     )
         elif isinstance(shape_val, ibis.Expr):
             try:
                 n = int(shape_val.op().value)
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 try:
                     n = int(shape_val.execute())
-                except Exception:
+                except (AttributeError, TypeError, ValueError):
                     raise NotImplementedError(
                         "ExpandTranslator could not resolve shape to a scalar integer"
                     )

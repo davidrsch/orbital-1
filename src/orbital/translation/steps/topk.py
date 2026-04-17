@@ -45,7 +45,7 @@ class TopKTranslator(Translator):
         if isinstance(k_raw, ibis.Expr):
             try:
                 k = int(k_raw.op().value)
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 k = int(k_raw.execute())
         else:
             k = int(k_raw)
