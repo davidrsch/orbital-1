@@ -11,7 +11,7 @@ any known limitations.
 ## Standard ONNX operators
 
 | Op-type                     | Typical source                                               | Notes                                                                                                                                                                                                     |
-| --------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| --------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ----------------------------------------------------------------------------------------------- |
 | `Abs`                       | Element-wise absolute value; used in norm/activation exprs   | `\|x\|`                                                                                                                                                                                                   |
 | `Add`                       | `StandardScaler` (bias), MLP bias term, residual connections | Supports both constant-offset and variable-to-variable addition                                                                                                                                           |
 | `AveragePool`               | PyTorch `nn.AvgPool1d`, `nn.AdaptiveAvgPool1d`               | 1-D only; kernel_shape=1 pass-through; sliding window (`k < L`) and global (`k == L`) supported; `auto_pad` NOTSET/VALID/SAME_UPPER/SAME_LOWER; `ceil_mode`; `count_include_pad`; dilations ≥ 1 supported |
@@ -33,7 +33,7 @@ any known limitations.
 | `Flatten`                   | PyTorch MLP preprocessing                                    | axis=1 pass-through                                                                                                                                                                                       |
 | `Gather`                    | category indexing                                            |                                                                                                                                                                                                           |
 | `Gelu`                      | PyTorch `nn.GELU()` (opset 20+)                              | Supports `approximate="tanh"` and `approximate="none"` modes                                                                                                                                              |
-| `Gemm`                      | `MLPRegressor`, `MLPClassifier`, `LinearRegression`          | Full `alpha·A@B + beta·C`, `transB`; `transA=1` is **not supported** (raises `NotImplementedError`)                                                                                                       |
+| `Gemm`                      | `MLPRegressor`, `MLPClassifier`, `LinearRegression`          | Full `alpha·A@B + beta·C`, `transB`; `transA=1` is treated as a **semantic no-op** in the tabular row-vector context (A is already a flat row so transposing it does not change the computation)          |
 | `GRU`                       | PyTorch `nn.GRU`, Keras `GRU`                                | Forward and bidirectional direction; ZRH gate order; zero initial state; no `sequence_lens`; both `linear_before_reset=0` and `linear_before_reset=1`                                                     |
 | `GlobalAveragePool`         | PyTorch `AdaptiveAvgPool`, pooling layers                    | Row-wise mean over all feature columns; 2D/3D not supported                                                                                                                                               |
 | `GlobalMaxPool`             | PyTorch `AdaptiveMaxPool`, pooling layers                    | Row-wise max over all feature columns via `ibis.greatest`                                                                                                                                                 |
@@ -101,7 +101,7 @@ any known limitations.
 | `Sub`                       | `StandardScaler` (mean)                                      |                                                                                                                                                                                                           |
 | `Sum`                       | PyTorch/ONNX elementwise multi-input sum                     | Variadic: any number of input tensors; element-wise sum across all inputs                                                                                                                                 |
 | `Swish`                     | PyTorch `nn.SiLU()`, Keras `swish` activation                | `x * sigmoid(x)` = `x / (1 + exp(-x))`                                                                                                                                                                    |
-| `Tanh`                      | MLP hidden layers (`tanh` activation)                        | Computed as `(exp(2x)-1)/(exp(2x)+1)` for SQL portability                                                                                                                                                 |
+| `Tanh`                      | MLP hidden layers (`tanh` activation)                        | Computed as `(exp(2x)-1)/(exp(2x)+1)` for SQL portability; note that large                                                                                                                                | x   | (> ≈20) may overflow `exp(2x)` in single-precision backends — keep inputs in a reasonable range |
 | `ThresholdedRelu`           | Keras `ThresholdedReLU(theta)` exports                       | `x > theta ? x : 0`; theta from node attribute, default theta=1.0                                                                                                                                         |
 | `Tile`                      | Repeat tensor along an axis                                  | Feature-axis (axis=-1 or axis=1) only; `repeats` from second input                                                                                                                                        |
 | `Transpose`                 | PyTorch weight permutation                                   | 2-D pass-through                                                                                                                                                                                          |
@@ -273,7 +273,6 @@ decomposed forms:
 For opset ≥ 20 models that export a native `Gelu` op, orbital now registers
 a `GeluTranslator` that handles both `approximate="tanh"` and `approximate="none"` modes.
 
-
 ## Known scope and limitations
 
 Orbital targets tabular, row-wise SQL translation. The following are
@@ -287,12 +286,39 @@ deliberate, documented non-goals or structural limitations rather than bugs:
   `TextVectorization`, `Hashing`, `Discretization` and `HashedCrossing`
   layers have no SQL-portable counterpart and are not supported.
 - **Explicit `NotImplementedError` surfaces:**
-  - `Gemm` with `transA=1`
   - `LSTM` with peephole connections
   - `Conv` / `ConvTranspose` weight rank other than 3
   - `GRU` with non-zero initial hidden state or `sequence_lens`
 - **MLP activation defaults.** `LeakyRelu` uses the ONNX node attribute
   `alpha` (default 0.01). When models are emitted from Keras with
-  `activation="leaky_relu"` as a bare string, Keras exports α=0.01 
-  matching ONNX  even though Keras' `LeakyReLU` *layer* defaults to 0.3.
+  `activation="leaky_relu"` as a bare string, Keras exports α=0.01
+  matching ONNX even though Keras' `LeakyReLU` _layer_ defaults to 0.3.
   Use an explicit `LeakyReLU(negative_slope=...)` layer to override.
+
+### Explicitly out-of-scope operators
+
+The following ONNX operator families are deliberately **not** translated by
+orbital. Using them will cause translation to abort with a
+`NotImplementedError` pointing at the offending op-type. These are out-of-scope
+because they either have no row-wise SQL equivalent or would require runtime
+state that a static query cannot express.
+
+- **2-D / 3-D convolution and pooling** (`Conv2d`, `Conv3d`, `MaxPool2d`/`3d`,
+  `AvgPool2d`/`3d`, `GlobalAveragePool`/`GlobalMaxPool` on rank > 3). Orbital is
+  a tabular 1-D translator by design — use a dedicated image serving runtime.
+- **Resize / Upsample** (`Resize`, `Upsample`). Geometric image resampling is
+  not representable as a static row-wise SQL expression.
+- **Comparison operators** (`Equal`, `Greater`, `Less`, `GreaterOrEqual`,
+  `LessOrEqual`). These appear in conditional sub-graphs; orbital only emits
+  deterministic feed-forward expressions today.
+- **Quantisation** (`QuantizeLinear`, `DequantizeLinear`, `QLinearConv`,
+  `QLinearMatMul`, `DynamicQuantizeLinear`). Integer-typed SQL intermediates
+  are not supported.
+- **Control flow** (`Loop`, `If`, `Scan`). Orbital emits a single static DAG.
+- **Niche ops** (`NonMaxSuppression`, `Range`, `NonZero`, `ConstantOfShape`,
+  `SpaceToDepth`, `DepthToSpace`, `MaxUnpool`, bitwise ops, `Gradient`,
+  `Optional*`, `Sequence*`). No tabular use case.
+
+If an unsupported op-type is encountered at translation time, orbital raises
+`NotImplementedError("Translation for <OpType> not implemented")` at
+[`src/orbital/translate.py`](https://github.com/posit-dev/orbital/blob/main/src/orbital/translate.py).

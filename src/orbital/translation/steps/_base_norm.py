@@ -1,8 +1,29 @@
 """Shared base class for ONNX normalisation translators."""
 
+import math
+
 import ibis
 
 from ..translator import Translator
+
+
+def _check_finite_initializer(values: list, name: str, op_name: str) -> None:
+    """Reject normalisation initializers containing NaN or +/-Inf.
+
+    Invalid floating-point values propagate silently through SQL in some
+    backends (e.g. by turning into NULL), so catch them at translation
+    time with a clear message rather than returning a broken pipeline.
+    """
+    for v in values:
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            continue
+        if math.isnan(fv) or math.isinf(fv):
+            raise ValueError(
+                f"{op_name}: {name} contains non-finite value ({fv!r}); "
+                "norm initializers must be finite."
+            )
 
 
 class NormTranslatorBase(Translator):
@@ -54,6 +75,7 @@ class NormTranslatorBase(Translator):
             raise ValueError(
                 f"{name}: scale (inputs[{scale_idx}]) must be a constant initializer."
             )
+        _check_finite_initializer(list(scale), "scale", name)
 
         bias: list | None = None
         if bias_idx is not None and len(self.inputs) > bias_idx:
@@ -63,6 +85,7 @@ class NormTranslatorBase(Translator):
                     raise ValueError(
                         f"{name}: bias (inputs[{bias_idx}]) must be a constant initializer."
                     )
+                _check_finite_initializer(list(bias_raw), "bias", name)
                 bias = bias_raw
 
         return scale, bias, epsilon

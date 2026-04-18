@@ -4,6 +4,7 @@ import typing
 
 import ibis
 
+from .._activation_defaults import CELU_ALPHA
 from ..translator import Translator
 from ..variables import NumericVariablesGroup, VariablesGroup
 
@@ -16,7 +17,7 @@ class CeluTranslator(Translator):
         # https://onnx.ai/onnx/operators/onnx__Celu.html
         # celu(x) = max(0, x) + min(0, alpha * (exp(x/alpha) - 1))
         data = self._variables.consume(self.inputs[0])
-        alpha = float(self._attributes.get("alpha", 1.0))
+        alpha = float(self._attributes.get("alpha", CELU_ALPHA))
 
         type_check = data
         if isinstance(type_check, VariablesGroup):
