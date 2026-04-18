@@ -44,7 +44,7 @@ class TestSumTranslator:
 
     def test_variadic_sum_two_columns(self):
         """Sum of two scalar inputs returns element-wise addition."""
-        table = ibis.memtable({"a": [1.0, 2.0], "b": [3.0, 4.0]})
+        table = ibis.memtable({"inp0": [1.0, 2.0], "inp1": [3.0, 4.0]})
         from onnx import helper
 
         node = helper.make_node("Sum", ["inp0", "inp1"], ["output"])
@@ -58,8 +58,6 @@ class TestSumTranslator:
             [helper.make_tensor_value_info("output", 1, [None])],
         )
         variables = GraphVariables(table, graph)
-        variables["inp0"] = table["a"]
-        variables["inp1"] = table["b"]
         from orbital.translation.steps.variadicsum import VariadicSumTranslator
 
         t = VariadicSumTranslator(
@@ -79,11 +77,7 @@ class TestSumTranslator:
         graph = helper.make_graph(
             [node],
             "g",
-            [
-                helper.make_tensor_value_info("g0", 1, [None]),
-                helper.make_tensor_value_info("g1", 1, [None]),
-                helper.make_tensor_value_info("g2", 1, [None]),
-            ],
+            [],
             [helper.make_tensor_value_info("output", 1, [None])],
         )
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
@@ -112,7 +106,7 @@ class TestMaxTranslator:
 
     def test_variadic_max_two_scalars(self):
         """Max of two columns returns per-row maximum."""
-        table = ibis.memtable({"a": [1.0, 5.0], "b": [3.0, 2.0]})
+        table = ibis.memtable({"inp0": [1.0, 5.0], "inp1": [3.0, 2.0]})
         from onnx import helper
 
         node = helper.make_node("Max", ["inp0", "inp1"], ["output"])
@@ -126,8 +120,6 @@ class TestMaxTranslator:
             [helper.make_tensor_value_info("output", 1, [None])],
         )
         variables = GraphVariables(table, graph)
-        variables["inp0"] = table["a"]
-        variables["inp1"] = table["b"]
         from orbital.translation.steps.variadicmax import VariadicMaxTranslator
 
         t = VariadicMaxTranslator(
@@ -149,7 +141,7 @@ class TestMinTranslator:
 
     def test_variadic_min_two_scalars(self):
         """Min of two columns returns per-row minimum."""
-        table = ibis.memtable({"a": [1.0, 5.0], "b": [3.0, 2.0]})
+        table = ibis.memtable({"inp0": [1.0, 5.0], "inp1": [3.0, 2.0]})
         from onnx import helper
 
         node = helper.make_node("Min", ["inp0", "inp1"], ["output"])
@@ -163,8 +155,6 @@ class TestMinTranslator:
             [helper.make_tensor_value_info("output", 1, [None])],
         )
         variables = GraphVariables(table, graph)
-        variables["inp0"] = table["a"]
-        variables["inp1"] = table["b"]
         from orbital.translation.steps.variadicmin import VariadicMinTranslator
 
         t = VariadicMinTranslator(
@@ -186,7 +176,9 @@ class TestMeanTranslator:
 
     def test_variadic_mean_three_scalars(self):
         """Mean of three columns returns per-row average."""
-        table = ibis.memtable({"a": [1.0, 2.0], "b": [3.0, 4.0], "c": [5.0, 6.0]})
+        table = ibis.memtable(
+            {"inp0": [1.0, 2.0], "inp1": [3.0, 4.0], "inp2": [5.0, 6.0]}
+        )
         from onnx import helper
 
         node = helper.make_node("Mean", ["inp0", "inp1", "inp2"], ["output"])
@@ -201,9 +193,6 @@ class TestMeanTranslator:
             [helper.make_tensor_value_info("output", 1, [None])],
         )
         variables = GraphVariables(table, graph)
-        variables["inp0"] = table["a"]
-        variables["inp1"] = table["b"]
-        variables["inp2"] = table["c"]
         from orbital.translation.steps.variadicmean import VariadicMeanTranslator
 
         t = VariadicMeanTranslator(
@@ -225,10 +214,7 @@ class TestMeanTranslator:
         graph = helper.make_graph(
             [node],
             "g",
-            [
-                helper.make_tensor_value_info("g0", 1, [None]),
-                helper.make_tensor_value_info("g1", 1, [None]),
-            ],
+            [],
             [helper.make_tensor_value_info("output", 1, [None])],
         )
         variables = GraphVariables(ibis.memtable({"x": [1.0]}), graph)
@@ -245,12 +231,6 @@ class TestMeanTranslator:
             t.process()
 
 
-# ---------------------------------------------------------------------------
-# Aliases required by TestStepCoverage: ONNX op key names ("Sum", "Max", etc.)
-# differ from the implementation class names ("VariadicSum", ...).
-# TestStepCoverage expects Test{op_key}Translator to exist.
-# ---------------------------------------------------------------------------
-TestSumTranslator = TestVariadicSumTranslator
-TestMaxTranslator = TestVariadicMaxTranslator
-TestMinTranslator = TestVariadicMinTranslator
-TestMeanTranslator = TestVariadicMeanTranslator
+# Note: Class names already match the ONNX op key form expected by
+# TestStepCoverage (`Test{op_key}Translator`), so no aliasing is required.
+
