@@ -22,7 +22,14 @@ def get_initializer_data(var: onnx.TensorProto) -> VariableTypes:
 
 def get_attr_value(attr: onnx.AttributeProto) -> VariableTypes:
     """Given an attribute, return its value"""
-    # TODO: Check if it can be replaced with onnx.helper.get_attribute_value
+    # Design note: intentionally not using ``onnx.helper.get_attribute_value``.
+    # That helper returns raw ``bytes`` for ``STRING``/``STRINGS`` attributes,
+    # whereas the rest of orbital expects decoded ``str`` values (e.g. the
+    # ``post_transform`` attribute is compared against string literals like
+    # ``"NONE"``).  It also covers TENSOR/GRAPH/SPARSE_TENSOR variants that
+    # orbital deliberately does not accept — surfacing an explicit
+    # ``ValueError`` here keeps translator errors actionable.  Any change
+    # would need a matching decode pass on every call site.
     if attr.type == attr.INTS:
         return list(attr.ints)
     elif attr.type == attr.FLOATS:

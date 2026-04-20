@@ -38,7 +38,15 @@ class GatherTranslator(Translator):
                     "Gather second operand must a list of one element"
                 )
 
-            idx = idx[0]  # TODO: Support gathering multiple columns
+            # Limitation: only single-column gather on axis=1 is supported.
+            # Multi-index gather would need to project several columns into a
+            # VariablesGroup result, but SQL has no native "select by positional
+            # index list" shape — each target column would need its own CASE
+            # chain keyed on the source column's position, and the upstream
+            # pipeline would then have to track the resulting column-group
+            # schema.  The caller above already rejects any index list with
+            # length != 1, so reaching this line guarantees a single index.
+            idx = idx[0]
             if not isinstance(idx, int):
                 raise ValueError("Gather: index must be an integer constant")
 

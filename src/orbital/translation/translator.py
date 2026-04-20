@@ -109,11 +109,17 @@ class Translator(abc.ABC):
         mutate_args = {v.get_name(): v for v in variables}
         self._table = self._table.mutate(**mutate_args)
 
-        # TODO: Should probably update self._variables too
-        # in case the same variable is used in multiple places
-        # but this is not a common case, and it's complex because
-        # we don't know the variable name (!= column_name)
-        # so we'll leave it for now.
+        # Design note: ``self._variables`` is intentionally not updated here.
+        # ``preserve`` materialises an expression as a temporary column on the
+        # underlying table so callers can reference it cheaply, but the
+        # ``GraphVariables`` map is keyed by ONNX *variable* name — which is
+        # distinct from the mutate column name and is not known at this point
+        # (``v.get_name()`` is the column alias, not the ONNX variable).
+        # Rewriting existing entries in ``self._variables`` to point at the
+        # new column would also risk breaking consumers that captured the
+        # original expression.  In practice ``preserve`` is only called with
+        # freshly-built helper expressions whose lifetime is scoped to the
+        # caller, so keeping the two structures decoupled is correct.
         return [self._table[cname] for cname in mutate_args]
 
     def variable_unique_short_alias(self, prefix: typing.Optional[str] = None) -> str:

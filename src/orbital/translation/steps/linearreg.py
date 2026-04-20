@@ -62,7 +62,12 @@ class LinearRegressorTranslator(Translator):
                 for val, coef in zip(fields, coef_slice):
                     prediction += val * coef
 
-                # TODO: apply post_transform here if needed
+                # ONNX ``LinearRegressor.post_transform`` may be one of NONE,
+                # SOFTMAX, LOGISTIC, SOFTMAX_ZERO, PROBIT — but for a pure
+                # regressor only NONE is meaningful, and non-NONE values are
+                # rejected at the top of ``process`` above.  No post-transform
+                # is applied here by design; classifier-side transforms live
+                # in ``linearclass.py``.
 
                 results[f"target_{target_idx}"] = self._optimizer.fold_operation(
                     prediction
@@ -81,6 +86,7 @@ class LinearRegressorTranslator(Translator):
             intercept = intercepts[0] if intercepts else 0.0
             prediction = (input_operand * coefficients[0]) + intercept
 
-            # TODO: apply post_transform here if needed
+            # See note above: a non-NONE ``post_transform`` is rejected early,
+            # so the single-target regressor output is emitted as-is.
 
             self.set_output(self._optimizer.fold_operation(prediction))

@@ -187,13 +187,20 @@ class Optimizer:
             else:
                 return op.default.to_expr()
         elif len(op.cases) == 1 and results_are_literals and possible_values == {1, 0}:
-            # results are 1 or 0, we can fold it to a boolean expression.
-            # FIXME: This doesn't work on postgresql so we need to disable it for the moment.
+            # Design note: an IF/ELSE returning only 1 or 0 could in principle be
+            # folded to ``cond.cast('float64')`` (or its negation).  That rewrite
+            # produces invalid SQL on PostgreSQL because Postgres does not allow
+            # a direct cast from ``boolean`` to ``double precision`` (it raises
+            # "cannot cast type boolean to double precision").  Other backends
+            # (DuckDB, SQLite, BigQuery, …) accept it, but since the Optimizer
+            # runs dialect-agnostically here — Ibis only learns the target
+            # backend at ``compile`` time — we conservatively leave the CASE
+            # expression untouched on every dialect.  To re-enable this fold
+            # the Optimizer would need to be made dialect-aware (or the fold
+            # would need to emit ``CASE WHEN cond THEN 1.0 ELSE 0.0 END`` in
+            # a form Postgres accepts, e.g. via an explicit intermediate int
+            # cast) before returning the rewritten expression.
             return expr
-            if op.results[0].value == 1:
-                return (op.cases[0].to_expr()).cast("float64")
-            else:
-                return (~(op.cases[0].to_expr())).cast("float64")
 
         return expr
 
